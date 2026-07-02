@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>VoxelCraft</title>
+  <style>
+    /* ---- Page / canvas: fullscreen, no margin ---------------------------- */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #1a0633;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #game-container {
+      position: fixed;
+      inset: 0;
+    }
+    #game-container canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ---- Crosshair: centered '+' ----------------------------------------- */
+    #crosshair {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      width: 20px;
+      height: 20px;
+      margin-left: -10px;
+      margin-top: -10px;
+      pointer-events: none;
+      z-index: 10;
+    }
+    #crosshair::before,
+    #crosshair::after {
+      content: "";
+      position: absolute;
+      background: rgba(24, 240, 255, 0.9);
+      box-shadow: 0 0 6px rgba(24, 240, 255, 0.9), 0 0 2px rgba(0, 0, 0, 0.6);
+    }
+    #crosshair::before {
+      left: 9px; top: 0;
+      width: 2px; height: 20px;
+    }
+    #crosshair::after {
+      top: 9px; left: 0;
+      width: 20px; height: 2px;
+    }
+
+    /* ---- Hotbar ---------------------------------------------------------- */
+    #hotbar {
+      position: fixed;
+      left: 50%;
+      bottom: 16px;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 6px;
+      padding: 6px;
+      background: rgba(10, 2, 24, 0.55);
+      border: 1px solid rgba(24, 240, 255, 0.25);
+      border-radius: 8px;
+      box-shadow: 0 0 12px rgba(177, 75, 255, 0.25);
+      z-index: 10;
+    }
+    .hotbar-slot {
+      position: relative;
+      width: 48px;
+      height: 48px;
+      border: 2px solid rgba(24, 240, 255, 0.3);
+      border-radius: 6px;
+      box-sizing: border-box;
+      cursor: pointer;
+      overflow: hidden;
+      background: rgba(0, 0, 0, 0.4);
+    }
+    .hotbar-slot.selected {
+      border-color: #18f0ff;
+      box-shadow: 0 0 0 2px rgba(24, 240, 255, 0.7), 0 0 12px rgba(24, 240, 255, 0.8);
+      transform: translateY(-3px);
+    }
+    .hotbar-swatch {
+      position: absolute;
+      inset: 4px;
+      border-radius: 3px;
+      background: #18f0ff;
+    }
+    .hotbar-num {
+      position: absolute;
+      left: 3px;
+      top: 1px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+      text-shadow: 0 0 2px #000, 0 0 2px #000;
+      pointer-events: none;
+    }
+
+    /* ---- HUD: Light-Bridge mode line ------------------------------------- */
+    #hud {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      z-index: 10;
+      pointer-events: none;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: #8cff3b;
+      text-shadow: 0 0 6px rgba(140, 255, 59, 0.8), 0 0 2px #000;
+    }
+    #hud .hud-on {
+      color: #8cff3b;
+      text-shadow: 0 0 6px rgba(140, 255, 59, 0.8), 0 0 2px #000;
+    }
+    #hud .hud-off {
+      color: #ff2bd6;
+      text-shadow: 0 0 6px rgba(255, 43, 214, 0.8), 0 0 2px #000;
+    }
+
+    /* ---- Instructions overlay ------------------------------------------- */
+    #overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(ellipse at center, rgba(59, 10, 94, 0.55), rgba(10, 2, 24, 0.8));
+      color: #fff;
+      cursor: pointer;
+      transition: opacity 0.2s ease;
+    }
+    #overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .overlay-card {
+      background: rgba(16, 4, 34, 0.88);
+      padding: 28px 40px;
+      border-radius: 12px;
+      text-align: center;
+      max-width: 360px;
+      border: 1px solid rgba(255, 43, 214, 0.4);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 24px rgba(255, 43, 214, 0.3);
+    }
+    .overlay-card h1 {
+      margin: 0 0 4px;
+      font-size: 34px;
+      letter-spacing: 2px;
+      color: #18f0ff;
+      text-shadow: 0 0 10px rgba(24, 240, 255, 0.9), 0 0 20px rgba(255, 43, 214, 0.5);
+    }
+    .overlay-card .hint {
+      margin: 0 0 18px;
+      font-size: 16px;
+      opacity: 0.9;
+      color: #ff2bd6;
+    }
+    .overlay-card ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      text-align: left;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+    .overlay-card b {
+      display: inline-block;
+      min-width: 92px;
+      color: #8cff3b;
+    }
+  </style>
+</head>
+<body>
+  <!-- Renderer canvas is appended here by main.js -->
+  <div id="game-container"></div>
+
+  <!-- HUD elements main.js expects (it will populate / reuse these) -->
+  <div id="crosshair"></div>
+  <div id="hotbar"></div>
+
+  <!-- HUD line for the Light-Bridge (Light Ribbon) mode; main.js updates it -->
+  <div id="hud">F = Light-Bridge mode: <span id="bridge-state" class="hud-off">OFF</span></div>
+
+  <!-- Instructions overlay; main.js fills it in and toggles .hidden on lock -->
+  <div id="overlay">
+    <div class="overlay-card">
+      <h1>VoxelCraft</h1>
+      <p class="hint">Click to play</p>
+      <ul>
+        <li><b>WASD</b> move</li>
+        <li><b>Space</b> jump</li>
+        <li><b>Shift</b> sprint</li>
+        <li><b>Mouse</b> look</li>
+        <li><b>Left click</b> break</li>
+        <li><b>Right click</b> place</li>
+        <li><b>1&ndash;8 / wheel</b> select</li>
+        <li><b>F</b> Light-Bridge mode</li>
+        <li><b>Esc</b> release mouse</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Three.js r128 (global THREE) — MUST stay first, on the same CDN. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <!-- Post-processing chain (unpkg three@0.128.0). Attaches to THREE.* in this
+       EXACT order: shaders before the passes that depend on them. If any of
+       these fail to load, PostFX degrades gracefully (no bloom, plain render). -->
+  <script src="https://unpkg.com/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+
+  <!-- Game scripts in load order (ENHANCE.md): engine, atmosphere, twist, glue. -->
+  <script src="js/noise.js"></script>
+  <script src="js/blocks.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/controls.js"></script>
+  <script src="js/interaction.js"></script>
+  <script src="js/sky.js"></script>
+  <script src="js/postfx.js"></script>
+  <script src="js/trail.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

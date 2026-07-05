@@ -132,5 +132,25 @@ const cidx = (x, y, z) => x + z * CHUNK + y * CHUNK * CHUNK;
   ok(m.opaque.color.length === m.opaque.position.length, '3 color bytes per vertex');
 }
 
+// 11. Tint attribute: default is all-white; a stub tintAt colors the matching tile.
+{
+  const chunks = emptyChunks();
+  chunks[4][cidx(8, 40, 8)] = B.STONE;
+  const slab = buildSlab(chunks);
+  const light = computeLight(slab);
+  const m = meshChunk(slab, light, faceTiles);
+  ok(m.opaque.tint && m.opaque.tint.length === m.opaque.position.length, '3 tint bytes per vertex');
+  ok(m.opaque.tint.every(v => v === 255), 'default tint is all white');
+}
+{
+  // Stub tintAt returns a fixed color for tile 0 (every face here → tile 0).
+  const chunks = emptyChunks();
+  chunks[4][cidx(8, 40, 8)] = B.STONE;
+  const slab = buildSlab(chunks);
+  const light = computeLight(slab);
+  const m = meshChunk(slab, light, faceTiles, (lx, lz, tile) => tile === 0 ? [10, 20, 30] : [255, 255, 255]);
+  ok(m.opaque.tint[0] === 10 && m.opaque.tint[1] === 20 && m.opaque.tint[2] === 30, 'stub tintAt colors the matching tile');
+}
+
 console.log(`\nmesh+light: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -31,16 +31,20 @@ const AO_FACTOR = [0.5, 0.7, 0.85, 1.0];
 
 const SHAPE = { BLOCK:0, CROSS:1, TORCH:2, CACTUS:3, LIQUID:4 };
 
-// Growable buffers.
-function bucket() { return { pos: [], uv: [], col: [], idx: [], v: 0 }; }
+const WHITE = [255, 255, 255]; // default tint = no color change
 
-function pushQuad(bk, verts, uvs, r, g, b3) {
+// Growable buffers.
+function bucket() { return { pos: [], uv: [], col: [], tint: [], idx: [], v: 0 }; }
+
+function pushQuad(bk, verts, uvs, r, g, b3, tint = WHITE) {
   // verts: 4× [x,y,z]; uvs: 4× [u,v]; per-vertex b3: 4 shade bytes (AO varies), r/g flat.
+  // tint: flat rgb applied to all 4 verts (white ⇒ shader no-op).
   const base = bk.v;
   for (let k = 0; k < 4; k++) {
     bk.pos.push(verts[k][0], verts[k][1], verts[k][2]);
     bk.uv.push(uvs[k][0], uvs[k][1]);
     bk.col.push(r, g, b3[k]);
+    bk.tint.push(tint[0], tint[1], tint[2]);
   }
   bk.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
   bk.v += 4;
@@ -66,7 +70,10 @@ function aoValue(s1, s2, c) {
   return 3 - (s1 + s2 + c);
 }
 
-export function meshChunk(slab, light, faceTiles) {
+// tintAt(lx, lz, tile) -> [r,g,b] 0..255. Emitted as a per-vertex `atint`
+// attribute (white everywhere by default ⇒ shader no-op). The worker overrides
+// it to return a per-biome color for grass tiles; mesher stays tile-agnostic.
+export function meshChunk(slab, light, faceTiles, tintAt = () => WHITE) {
   const sky = light.sky, blk = light.block;
   const opaque = bucket();
   const water = bucket();
@@ -81,7 +88,7 @@ export function meshChunk(slab, light, faceTiles) {
         if (id === 0) continue;
         const shape = SHAPE_ID[id];
 
-        if (shape === SHAPE.CROSS) { emitCross(opaque, id, lx, ly, lz, sx, sy, sz, sky, blk, faceTiles); continue; }
+        if (shape === SHAPE.CROSS) { emitCross(opaque, id, lx, ly, lz, sx, sy, sz, sky, blk, faceTiles, tintAt); continue; }
         if (shape === SHAPE.TORCH) { emitTorch(opaque, id, lx, ly, lz, sx, sy, sz, sky, blk, faceTiles); continue; }
         if (shape === SHAPE.LIQUID) { emitLiquid(water, id, lx, ly, lz, sx, sy, sz, slab, sky, blk, faceTiles); continue; }
 
@@ -125,7 +132,7 @@ export function meshChunk(slab, light, faceTiles) {
             const ao = aoValue(s1, s2, cc);
             b3.push(Math.round(baseShade * AO_FACTOR[ao] * 255));
           }
-          pushQuad(opaque, verts, uvs, R, G, b3);
+          pushQuad(opaque, verts, uvs, R, G, b3, tintAt(lx, lz, tile));
         }
       }
     }
@@ -133,11 +140,12 @@ export function meshChunk(slab, light, faceTiles) {
   return { opaque: finalize(opaque), water: finalize(water) };
 }
 
-function emitCross(bk, id, lx, ly, lz, sx, sy, sz, sky, blk, faceTiles) {
+function emitCross(bk, id, lx, ly, lz, sx, sy, sz, sky, blk, faceTiles, tintAt) {
   const tile = faceTiles[id * 6 + 2]; // use "top"/all tile
   const uvs = faceUVs(tile);
   const i = sidx(sx, sy, sz);
   const R = blk[i] * 17, G = sky[i] * 17;
+  const tint = tintAt(lx, lz, tile);
   const b = [Math.round(0.9 * 255), Math.round(0.9 * 255), Math.round(0.9 * 255), Math.round(0.9 * 255)];
   const lo = 0.146, hi = 0.854; // ~ sqrt insets to fit unit cell
   // Plane A (diagonal ↗) and Plane B (↘), each emitted both-sided.
@@ -145,8 +153,8 @@ function emitCross(bk, id, lx, ly, lz, sx, sy, sz, sky, blk, faceTiles) {
   const Bp = [[lo, 0, hi], [hi, 0, lo], [hi, 1, lo], [lo, 1, hi]];
   for (const plane of [A, Bp]) {
     const v = plane.map(p => [lx + p[0], ly + p[1], lz + p[2]]);
-    pushQuad(bk, v, uvs, R, G, b);                       // front
-    pushQuad(bk, [v[3], v[2], v[1], v[0]], [uvs[3], uvs[2], uvs[1], uvs[0]], R, G, b); // back
+    pushQuad(bk, v, uvs, R, G, b, tint);                       // front
+    pushQuad(bk, [v[3], v[2], v[1], v[0]], [uvs[3], uvs[2], uvs[1], uvs[0]], R, G, b, tint); // back
   }
 }
 
@@ -206,6 +214,7 @@ function finalize(bk) {
     position: new Float32Array(bk.pos),
     uv: new Float32Array(bk.uv),
     color: new Uint8Array(bk.col),
+    tint: new Uint8Array(bk.tint),
     index: new Uint32Array(bk.idx),
     count: bk.idx.length,
   };

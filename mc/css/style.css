@@ -106,6 +106,9 @@ canvas.item-icon {
 .meter-row.heart-row { left: 0; bottom: 22px; }
 .meter-row.hunger-row { right: 0; bottom: 22px; flex-direction: row-reverse; }
 .air-row { right: 0; bottom: 0; }
+/* Beat .meter-row's own `display` so the .hidden toggle actually hides the row
+   (e.g. air bubbles when the breath meter is full / player is on land). */
+.meter-row.hidden { display: none; }
 
 .meter-icon {
   position: relative;

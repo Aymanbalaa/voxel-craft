@@ -361,3 +361,21 @@ export function surfaceHeight(seed, wx, wz) {
 export function biomeAt(seed, wx, wz) {
   return columnInfo(fields(seed), wx, wz).biome;
 }
+
+// Grass tint per biome (RGB 0..255). Multiplied over the single baked grass_top
+// tile in the shader so the world reads as climate-zoned without new tiles.
+const BIOME_TINT = {
+  [BIOME.PLAINS]:       [141, 179, 96],
+  [BIOME.FOREST]:       [121, 168, 86],
+  [BIOME.BIRCH_FOREST]: [133, 176, 92],
+  [BIOME.TAIGA]:        [104, 150, 110],
+  [BIOME.SNOWY]:        [128, 163, 120],
+  [BIOME.MOUNTAINS]:    [130, 168, 110],
+  [BIOME.SAVANNA]:      [189, 178, 95],
+  [BIOME.DESERT]:       [180, 169, 90],
+  [BIOME.BEACH]:        [141, 179, 96],
+  [BIOME.OCEAN]:        [130, 170, 120],
+};
+export function biomeTint(biome) {
+  return BIOME_TINT[biome] || [141, 179, 96];
+}

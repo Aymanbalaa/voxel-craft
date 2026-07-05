@@ -1,5 +1,5 @@
 // Node smoke tests for worldgen.js
-import { generateChunk, idx, surfaceHeight, biomeAt, BIOME } from '../js/worldgen.js';
+import { generateChunk, idx, surfaceHeight, biomeAt, biomeTint, BIOME } from '../js/worldgen.js';
 import { B } from '../js/blocks.js';
 import { CHUNK, HEIGHT, SEA_LEVEL } from '../js/config.js';
 
@@ -137,6 +137,15 @@ const SEED = 1337;
     if (bi < 0 || bi > 9) valid = false;
   }
   ok(valid, 'biomeAt returns valid ids');
+}
+
+// 11. biomeAt is deterministic and biomeTint returns sane per-biome rgb.
+{
+  ok(typeof biomeAt(SEED, 8, 8) === 'number', 'biomeAt returns a biome id');
+  ok(biomeAt(SEED, 8, 8) === biomeAt(SEED, 8, 8), 'biomeAt is deterministic');
+  const t = biomeTint(BIOME.SAVANNA);
+  ok(t.length === 3 && t.every(v => v >= 0 && v <= 255), 'biomeTint returns rgb');
+  ok(biomeTint(BIOME.SAVANNA)[0] > biomeTint(BIOME.TAIGA)[0], 'savanna is warmer/yellower than taiga');
 }
 
 console.log(`\nworldgen: ${pass} passed, ${fail} failed`);

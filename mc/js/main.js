@@ -324,6 +324,7 @@ function dropToGround() {
   let y = HEIGHT - 1;
   while (y > 1 && world.getBlock(8, y, 8) === B.AIR) y--;
   player.pos.y = y + 1.02; player.vel.y = 0;
+  player.fallStart = null; // clear fall tracking so a teleport/respawn can't inflict phantom fall damage
 }
 
 // ---- Main loop -------------------------------------------------------------

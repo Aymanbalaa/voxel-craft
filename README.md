@@ -1,98 +1,56 @@
-# VoxelCraft
+<div align="center">
 
-A small browser-based voxel sandbox (Minecraft-style) built with
-[Three.js](https://threejs.org/) r128. Walk around procedurally generated
-terrain, break blocks, and place blocks from a hotbar. No build step, no
-bundler — just plain classic `<script>` files and a CDN copy of Three.js.
+# ⛏️ Voxelheim
 
-## How to run
+### A complete Minecraft-style voxel sandbox that runs in your browser — built from scratch in vanilla JavaScript.
 
-Because the game loads Three.js from a CDN and uses no ES modules or `fetch` of
-local files, it runs straight from disk:
+No game engine. No build step. No dependencies to install to play. Just ES modules, a Web Worker, and [Three.js](https://threejs.org/).
 
-- **Double-click `index.html`** to open it in your browser, or
-- Serve the folder over a tiny static server (recommended; avoids any
-  file:// quirks):
+![Vanilla JS](https://img.shields.io/badge/vanilla-JavaScript-f7df1e?logo=javascript&logoColor=black)
+![Three.js r180](https://img.shields.io/badge/three.js-r180-000000?logo=three.js&logoColor=white)
+![No build step](https://img.shields.io/badge/build_step-none-brightgreen)
+![Web Workers](https://img.shields.io/badge/terrain-Web_Worker_streamed-blue)
 
-  ```sh
-  # from the voxel-craft directory
-  python -m http.server 8000
-  ```
+![Voxelheim — coastal terrain vista](mc/screenshots/hero.png)
 
-  then open <http://localhost:8000> in your browser.
+</div>
 
-Click the page to lock the mouse and start playing. Press **Esc** to release
-the mouse (the instructions overlay reappears).
+---
 
-## Controls
+> **The game lives in [`mc/`](mc/).** This repository root also contains an early neon prototype
+> (`index.html` + `js/`) that has been superseded — **Voxelheim is the real, complete project.**
+> See **[`mc/README.md`](mc/README.md)** for the full write-up.
 
-| Input | Action |
-| --- | --- |
-| `W` `A` `S` `D` / arrows | Move |
-| `Space` | Jump |
-| `Shift` | Sprint |
-| Mouse | Look around |
-| Left click | Break the targeted block |
-| Right click | Place the selected block |
-| `1`–`8` / mouse wheel | Select hotbar slot |
-| `Esc` | Release the mouse |
+## Highlights
 
-The white wireframe box shows the block you are currently targeting (within a
-6-block reach). The hotbar at the bottom shows each placeable block as a color
-swatch; the highlighted slot is the one that will be placed.
+Every system is written by hand in plain JavaScript — terrain, lighting, meshing, survival, crafting,
+mobs, textures, and sound. There is no engine, no framework, and no bundler.
 
-## Architecture overview
+- **🌍 World** — infinite streamed terrain, 10 biomes, caves, ores, trees, and a 20-minute day/night cycle with sun, moon, 800 stars, and clouds.
+- **❤️ Survival** — health, hunger, food, regen, fall/drown/lava damage, death & respawn.
+- **🔨 Crafting** — 36-slot inventory, 55 shaped/shapeless recipes, crafting table, and furnace smelting.
+- **🐷 Mobs** — pigs, sheep, and zombies with wander/flee/hunt AI, day/night spawning, combat, and loot.
+- **🎨 Engine** — worker-streamed chunk meshing with ambient occlusion, baked per-mesh lighting blended with a live daylight shader uniform, and **procedurally generated textures & sound** (zero image/audio assets).
+- **💾 Persistence** — worlds saved to IndexedDB (autosave + manual).
 
-Everything is a classic script that attaches a global to `window` and is loaded
-in dependency order from `index.html`:
+## Gallery
 
-1. **`js/noise.js`** — `Noise` class. Seeded, deterministic 2D/3D Perlin noise
-   used to drive the terrain heightmap.
-2. **`js/blocks.js`** — block registry. Exposes `AIR` (=0), `BLOCKS`
-   (NAME → `{ id, name, color, transparent? }`), the ordered `HOTBAR` array of
-   placeable block ids, and `getBlockById(id)`.
-3. **`js/world.js`** — `World` class. `new World(scene, seed)` stores voxels in
-   per-chunk typed arrays (`CHUNK_SIZE` 16, `WORLD_HEIGHT` 64, render distance
-   ~4 chunks). `generate()` builds terrain (heightmap layers, water, sand
-   beaches, scattered trees) and adds one opaque + one transparent `THREE.Mesh`
-   per chunk to the scene, with face culling and per-face vertex-color shading.
-   `getBlock`/`setBlock` work in world integer coordinates; edits rebuild the
-   affected chunk mesh (and border neighbors) and dispose replaced geometry.
-4. **`js/player.js`** — `Player` class. `new Player(world, camera)` holds the
-   eye `position`/`velocity`, applies yaw-relative movement, gravity, jumping,
-   and axis-by-axis AABB collision against `world.getBlock`, then drives the
-   camera each frame from `update(dt, input)`.
-5. **`js/controls.js`** — `Controls` class. `new Controls(canvas)` manages
-   pointer lock, WASD/Space/Shift key state, and mouse-look (yaw/pitch).
-   `getInput()` returns `{ forward, back, left, right, jump, sprint, yaw,
-   pitch, locked }`; `isLocked` reflects pointer-lock state.
-6. **`js/interaction.js`** — `Interaction` class.
-   `new Interaction(world, camera, controls, player)` casts a voxel DDA ray
-   from the camera, breaks (left click) / places (right click) blocks, never
-   places inside the player, manages hotbar selection (`selectedId`,
-   `selectedSlot`, `onSelect` callback, number keys + wheel), and maintains the
-   wireframe target highlight.
-7. **`js/main.js`** — bootstrap / glue. Creates the `WebGLRenderer`, `Scene`
-   (sky-blue background + fog), `PerspectiveCamera` (fov 70), hemisphere + sun
-   lighting; instantiates `World → generate()`, then `Player`, `Controls`,
-   `Interaction`; runs the `requestAnimationFrame` loop with real delta time
-   (`THREE.Clock`): `controls.getInput()` → `player.update(dt, input)` →
-   `interaction.update()` → `renderer.render(scene, camera)`. It also builds the
-   crosshair/hotbar/overlay HUD, wires the hotbar highlight to
-   `interaction.onSelect`, and handles window resize.
+|  |  |
+|---|---|
+| ![Night sky with moon and stars](mc/screenshots/night.png) | ![Pigs and sheep in a meadow](mc/screenshots/mobs.png) |
+| A living sky with a pixel moon, stars, and torchlight. | Mobs with AI roaming a flowering meadow. |
+| ![First-person survival HUD](mc/screenshots/gameplay.png) | ![Inventory and crafting grid](mc/screenshots/inventory.png) |
+| First-person survival with hearts, hunger, and hotbar. | A 36-slot inventory with 3×3 crafting. |
 
-### Data flow each frame
+## Quick start
 
-```
-Controls.getInput()  ->  Player.update(dt, input)  ->  camera moves
-                                                        |
-Interaction.update() reads camera ----> raycast -----> highlight + (on click) World.setBlock
-                                                        |
-renderer.render(scene, camera) ------------------------+
+ES modules and Web Workers need a real HTTP origin (not `file://`):
+
+```bash
+cd mc
+python -m http.server 8177
+# then open http://localhost:8177
 ```
 
-### Coordinates
-
-Three.js default with **Y up**. A block at integer `(x, y, z)` occupies the
-unit cube from `(x, y, z)` to `(x+1, y+1, z+1)`; convert world → block coords
-with `Math.floor`. Air is block id `0`.
+Click the screen to lock the mouse and play. Full controls, architecture notes, and tests are in
+**[`mc/README.md`](mc/README.md)**.

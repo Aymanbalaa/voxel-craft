@@ -78,9 +78,12 @@ export class Player {
     const len = Math.hypot(ix, iz) || 1;
     ix /= len; iz /= len;
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
-    // forward is -Z rotated by yaw
-    const wx = ix * cos - iz * sin;
-    const wz = ix * sin + iz * cos;
+    // World-space move dir must match the rendered view. three.js's YXZ euler
+    // (camera.rotation.set(pitch,yaw,0,'YXZ')) makes the camera look along
+    // (-sin(yaw), -cos(yaw)), so forward (iz=-1) has to map there too — i.e.
+    // rotate the input (ix,iz) by -yaw, not +yaw.
+    const wx = ix * cos + iz * sin;
+    const wz = -ix * sin + iz * cos;
 
     let speed = WALK_SPEED;
     if (this.flying) speed = FLY_SPEED;

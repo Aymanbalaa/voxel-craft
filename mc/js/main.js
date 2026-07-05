@@ -4,7 +4,7 @@
 import * as THREE from '../vendor/three.module.js';
 import { CHUNK, HEIGHT } from './config.js';
 import { B, BLOCKS } from './blocks.js';
-import { I, isBlockItem, itemIcon, itemName, attackDamage } from './items.js';
+import { I, isBlockItem, itemIcon, itemName, attackDamage, maxStack } from './items.js';
 import { buildAtlas, makeIcon } from './textures.js';
 import { buildFaceTiles } from './mesher.js';
 import { surfaceHeight } from './worldgen.js';
@@ -125,15 +125,15 @@ function renderItemIcon(id) {
 UI.initUI({
   inventory,
   renderItemIcon,
-  onCraft(grid) { const r = matchRecipe(grid); return r ? r.result : null; },
+  onCraft(grid) { return matchRecipe(grid); },   // ui.js expects { result:{id,count} } | null
   takeCraftResult(grid) {
     const r = matchRecipe(grid);
     if (!r) return;
     // Give result to cursor (merge if same), then consume one per occupied cell.
     const res = r.result;
     if (!inventory.cursor) inventory.cursor = { id: res.id, count: res.count };
-    else if (inventory.cursor.id === res.id) inventory.cursor.count += res.count;
-    else return; // can't hold two different stacks
+    else if (inventory.cursor.id === res.id && inventory.cursor.count + res.count <= maxStack(res.id)) inventory.cursor.count += res.count;
+    else return; // can't hold two different stacks, or result won't fit on the cursor
     for (let i = 0; i < grid.length; i++) {
       if (grid[i]) { grid[i].count--; if (grid[i].count <= 0) grid[i] = null; }
     }

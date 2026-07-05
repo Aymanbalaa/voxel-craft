@@ -19,6 +19,9 @@ import { sound } from './sound.js';
 import { Sky } from './sky.js';
 import { Survival } from './survival.js';
 import { Furnaces } from './furnace.js';
+import { Mobs } from './mobs.js';
+import { attackDamage } from './items.js';
+import { REACH } from './config.js';
 import { foodValue } from './items.js';
 import { Save } from './save.js';
 import * as UI from './ui.js';
@@ -76,6 +79,13 @@ const inventory = new Inventory();
 const drops = new Drops({ scene, world, inventory, atlasTex: tex, faceTiles, TILES: atlas.TILES, sound });
 const survival = new Survival();
 const furnaces = new Furnaces();
+const mobs = new Mobs({ scene, world, drops, sound });
+mobs._attackPlayer = (m) => {
+  // Zombie melee: damage + knockback the player.
+  const dx = player.pos.x - m.pos.x, dz = player.pos.z - m.pos.z, d = Math.hypot(dx, dz) || 1;
+  player.vel.x += dx / d * 4; player.vel.z += dz / d * 4; player.vel.y = 4;
+  hurt(3);
+};
 
 // Item-icon rendering (cached) — blocks become iso cubes, items flat tiles.
 const iconCache = new Map();
@@ -155,6 +165,14 @@ bootOverlay.addEventListener('click', () => { if (started) canvas.requestPointer
 
 function relock() { if (started) canvas.requestPointerLock(); }
 
+// Player look ray (matches interaction's yaw/pitch convention).
+const _dir = new THREE.Vector3();
+function lookDir() {
+  const cp = Math.cos(player.pitch), sp = Math.sin(player.pitch), sy = Math.sin(player.yaw), cy = Math.cos(player.yaw);
+  return _dir.set(-sy * cp, sp, -cy * cp);
+}
+function eyeOrigin() { return { x: player.pos.x, y: player.eyeY(), z: player.pos.z }; }
+
 const controls = new Controls(canvas, {
   onLockChange(locked) {
     if (locked) {
@@ -176,6 +194,10 @@ const controls = new Controls(canvas, {
   },
   onMouseDown(button) {
     if (UI.isOverlayOpen() || !controls.locked) return;
+    if (button === 0) {
+      const mob = mobs.raycast(eyeOrigin(), lookDir(), REACH);
+      if (mob) { mobs.hit(mob, attackDamage(inventory.selectedId()), player.pos); }
+    }
     if (button === 2) interaction.useOrPlace();
     if (button === 1) interaction.pickBlock();
   },
@@ -308,7 +330,8 @@ function frame(now) {
 
     if (active) {
       interaction.updateTarget();
-      interaction.updateBreaking(dt, controls.mouseButtons.has(0));
+      const mobAimed = mobs.raycast(eyeOrigin(), lookDir(), REACH);
+      interaction.updateBreaking(dt, controls.mouseButtons.has(0) && !mobAimed);
       handleEating(dt);
       handleFootsteps(dt);
     } else {
@@ -316,6 +339,8 @@ function frame(now) {
       interaction._cancelBreak();
       eatTimer = 0;
     }
+    mobs.setDaylight(daylight.value);
+    mobs.update(dt, player);
     drops.update(dt, player.pos, camera);
     furnaces.update(dt);
     if (openFurnace) { // animate gauges / reflect auto-smelt while open
@@ -420,7 +445,7 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-window.MC = { THREE, scene, camera, renderer, world, player, controls, inventory, interaction, drops, materials, atlas, daylight, sound, sky, survival, furnaces, UI, MCsave: Save };
+window.MC = { THREE, scene, camera, renderer, world, player, controls, inventory, interaction, drops, mobs, materials, atlas, daylight, sound, sky, survival, furnaces, UI, MCsave: Save };
 window.__mc_save = () => saveGame(false);
 Object.defineProperty(window, '__mc_loadedExisting', { get: () => loadedExisting });
 

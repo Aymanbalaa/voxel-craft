@@ -4,7 +4,7 @@
 import * as THREE from '../vendor/three.module.js';
 import { CHUNK, HEIGHT } from './config.js';
 import { B, BLOCKS } from './blocks.js';
-import { I, isBlockItem, itemIcon, itemName } from './items.js';
+import { I, isBlockItem, itemIcon, itemName, attackDamage } from './items.js';
 import { buildAtlas, makeIcon } from './textures.js';
 import { buildFaceTiles } from './mesher.js';
 import { surfaceHeight } from './worldgen.js';
@@ -20,7 +20,7 @@ import { Sky } from './sky.js';
 import { Survival } from './survival.js';
 import { Furnaces } from './furnace.js';
 import { Mobs } from './mobs.js';
-import { attackDamage } from './items.js';
+import { Particles } from './particles.js';
 import { REACH } from './config.js';
 import { foodValue } from './items.js';
 import { Save } from './save.js';
@@ -80,6 +80,29 @@ const drops = new Drops({ scene, world, inventory, atlasTex: tex, faceTiles, TIL
 const survival = new Survival();
 const furnaces = new Furnaces();
 const mobs = new Mobs({ scene, world, drops, sound });
+const particles = new Particles({ scene, world, atlasTex: tex, faceTiles });
+
+// First-person held-item view model (block cube or flat item), parented to camera.
+const heldGroup = new THREE.Group();
+camera.add(heldGroup); scene.add(camera);
+heldGroup.position.set(0.55, -0.42, -0.8);
+const heldMat = new THREE.MeshBasicMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide });
+let heldMesh = null, heldId = -1, heldSwing = 0;
+function updateHeld() {
+  const id = inventory.selectedId();
+  if (id === heldId) return;
+  heldId = id;
+  if (heldMesh) { heldGroup.remove(heldMesh); heldMesh.geometry.dispose(); heldMesh = null; }
+  if (!id) return;
+  let geo;
+  if (isBlockItem(id)) { geo = drops._blockGeo(id).clone(); geo.scale(1.4, 1.4, 1.4); heldGroup.rotation.set(0, 0, 0); }
+  else { geo = new THREE.PlaneGeometry(0.5, 0.5); const uv = geo.attributes.uv, s = 1/16, e = 0.002;
+    const ic = itemIcon(id).flat, t = (atlas.TILES && ic in atlas.TILES) ? atlas.TILES[ic] : 0;
+    const col = t & 15, row = (t >> 4) & 15;
+    uv.setXY(0, col*s+e, row*s+e); uv.setXY(1, (col+1)*s-e, row*s+e); uv.setXY(2, col*s+e, (row+1)*s-e); uv.setXY(3, (col+1)*s-e, (row+1)*s-e); uv.needsUpdate = true; }
+  heldMesh = new THREE.Mesh(geo, heldMat);
+  heldGroup.add(heldMesh);
+}
 mobs._attackPlayer = (m) => {
   // Zombie melee: damage + knockback the player.
   const dx = player.pos.x - m.pos.x, dz = player.pos.z - m.pos.z, d = Math.hypot(dx, dz) || 1;
@@ -134,6 +157,8 @@ interaction.onOpenFurnace = (pos) => {
   document.exitPointerLock();
 };
 interaction.onBlockBroken = (id, x, y, z) => {
+  particles.blockBreak(x + 0.5, y + 0.5, z + 0.5, id);
+  heldSwing = 1;
   if (id === B.FURNACE) {
     const f = furnaces.remove(x, y, z);
     if (f) for (const s of [f.slots.input, f.slots.fuel, f.slots.output])
@@ -304,7 +329,7 @@ function dropToGround() {
 // ---- Main loop -------------------------------------------------------------
 const STEP = 1 / 60;
 let acc = 0, last = performance.now(), fps = 0, fpsT = 0, fpsN = 0;
-let air = 10, drownTimer = 0;
+let air = 10, drownTimer = 0, bobPhase = 0;
 const EMPTY = { forward:0,back:0,left:0,right:0,jump:0,sneak:0,sprint:0 };
 
 function frame(now) {
@@ -324,9 +349,21 @@ function frame(now) {
       if (evt.landedDamage > 0) { hurt(evt.landedDamage); }
       acc -= STEP; steps++;
     }
-    camera.position.set(player.pos.x, player.eyeY(), player.pos.z);
+    // View bob while walking on the ground.
+    const hv = Math.hypot(player.vel.x, player.vel.z);
+    if (player.onGround && hv > 0.5) bobPhase += dt * 10;
+    const bob = player.onGround ? Math.sin(bobPhase) * Math.min(hv, 6) * 0.012 : 0;
+    const bobX = Math.cos(bobPhase * 0.5) * Math.min(hv, 6) * 0.01;
+    camera.position.set(player.pos.x, player.eyeY() + bob, player.pos.z);
     camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
+    camera.translateX(bobX);
     sky.update(dt);
+    particles.update(dt);
+    updateHeld();
+    // Held-item swing on use/break.
+    if (controls.mouseButtons.has(0) && active) heldSwing = Math.min(1, heldSwing + dt * 6);
+    heldSwing = Math.max(0, heldSwing - dt * 4);
+    if (heldMesh) { heldGroup.position.y = -0.42 - Math.sin(heldSwing * Math.PI) * 0.15; heldGroup.rotation.z = Math.sin(heldSwing * Math.PI) * 0.3; }
 
     if (active) {
       interaction.updateTarget();

@@ -35,6 +35,8 @@ export class World {
     this.scene = scene;
     this.materials = materials;   // { opaque, water }
     this.chunks = new Map();
+    this.editedChunks = new Set();  // keys of chunks the player changed (for saving)
+    this.savedEdits = new Map();    // key -> full Uint8Array to overlay on generation
     this.genQueue = [];           // [cx,cz] wanting generation
     this.meshQueue = [];          // chunk keys wanting (re)mesh
     this.pendingGen = new Set();
@@ -85,6 +87,7 @@ export class World {
     const i = cidx(lx, wy, lz);
     if (c.blocks[i] === id) return;
     c.blocks[i] = id;
+    this.editedChunks.add(key(cx, cz));   // track for persistence
     this._markDirty(c); // bumps rev + enqueues remesh
     // Remesh neighbors if the edit is on a border (lighting/faces cross chunks).
     if (lx === 0) this._markDirtyKey(cx - 1, cz);
@@ -206,7 +209,9 @@ export class World {
       this.inFlightGen--;
       const c = this.chunks.get(k);
       if (!c) return; // unloaded while generating
-      c.blocks = new Uint8Array(msg.blocks);
+      // Overlay any saved player edits for this chunk on top of fresh generation.
+      if (this.savedEdits.has(k)) { c.blocks = this.savedEdits.get(k); this.editedChunks.add(k); }
+      else c.blocks = new Uint8Array(msg.blocks);
       c.state = 'blocks';
       // This chunk and any neighbor may now have a complete neighborhood → queue mesh.
       for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
@@ -265,6 +270,22 @@ export class World {
       if (m) { this.scene.remove(m); m.geometry.dispose(); }
     }
     c.opaqueMesh = null; c.waterMesh = null;
+  }
+
+  // Provide saved edits (loaded from disk) to overlay onto generation.
+  setSavedEdits(map) { this.savedEdits = map || new Map(); }
+
+  // Collect edited chunks as {cx,cz,blocks} copies for saving.
+  collectEdits() {
+    const out = [];
+    for (const k of this.editedChunks) {
+      const c = this.chunks.get(k);
+      let blocks = c && c.blocks ? c.blocks : this.savedEdits.get(k);
+      if (!blocks) continue;
+      const [cx, cz] = k.split(',').map(Number);
+      out.push({ cx, cz, blocks: blocks.slice(0) });
+    }
+    return out;
   }
 
   // How many chunks are fully ready (for a loading gate).

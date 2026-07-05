@@ -20,6 +20,7 @@ import { Sky } from './sky.js';
 import { Survival } from './survival.js';
 import { Furnaces } from './furnace.js';
 import { foodValue } from './items.js';
+import { Save } from './save.js';
 import * as UI from './ui.js';
 
 const SEED = 20260705;
@@ -144,7 +145,13 @@ inventory.set(7, { id: B.GLASS, count: 64 });
 const bootOverlay = document.getElementById('boot-overlay');
 const statusEl = document.getElementById('boot-status');
 const bootControls = document.getElementById('boot-controls');
+const pauseActions = document.getElementById('pause-actions');
 let paused = false;
+
+document.getElementById('btn-resume').addEventListener('click', (e) => { e.stopPropagation(); canvas.requestPointerLock(); });
+document.getElementById('btn-save').addEventListener('click', (e) => { e.stopPropagation(); saveGame(true); });
+// Clicking the overlay (not a button) starts/resumes play by grabbing the pointer.
+bootOverlay.addEventListener('click', () => { if (started) canvas.requestPointerLock(); });
 
 function relock() { if (started) canvas.requestPointerLock(); }
 
@@ -152,11 +159,19 @@ const controls = new Controls(canvas, {
   onLockChange(locked) {
     if (locked) {
       bootOverlay.classList.add('hidden');
+      pauseActions.style.display = 'none';
       paused = false;
       if (!sound.ready) sound.init();
     } else if (!UI.isOverlayOpen()) {
       // Pause (unless a menu is driving the unlock).
-      if (started) { bootOverlay.classList.remove('hidden'); statusEl.textContent = 'Paused'; paused = true; }
+      if (started) {
+        bootOverlay.classList.remove('hidden');
+        statusEl.style.display = 'block';
+        statusEl.textContent = 'Paused';
+        bootControls.style.display = 'none';
+        pauseActions.style.display = 'flex';
+        paused = true;
+      }
     }
   },
   onMouseDown(button) {
@@ -190,8 +205,28 @@ let showF3 = false;
 
 // ---- Loading gate ----------------------------------------------------------
 let started = false;
+let loadedExisting = false;
 async function boot() {
   await world.whenReady;
+  // Restore a saved world if one exists for this seed.
+  try {
+    const saved = await Save.loadWorld(SEED);
+    if (saved) {
+      loadedExisting = true;
+      world.setSavedEdits(saved.edits);
+      const m = saved.meta;
+      if (m.time != null) sky.setTime(m.time);
+      if (m.player) {
+        player.pos.x = m.player.x; player.pos.y = m.player.y; player.pos.z = m.player.z;
+        player.yaw = m.player.yaw || 0; player.pitch = m.player.pitch || 0;
+        player.setMode(m.player.mode || 'survival'); player.flying = !!m.player.flying;
+      }
+      if (m.survival) Object.assign(survival, m.survival);
+      if (m.inventory) inventory.load(m.inventory);
+      if (m.furnaces) furnaces.load(m.furnaces);
+    }
+  } catch (e) { console.warn('load failed', e); }
+
   world.update(player.pos.x, player.pos.z);
   const t0 = performance.now();
   const gate = () => {
@@ -199,16 +234,44 @@ async function boot() {
     const n = world.readyCount();
     statusEl.textContent = `Generating world… ${n} chunks`;
     if (n >= 9 || performance.now() - t0 > 8000) {
-      dropToGround();
+      if (!loadedExisting) dropToGround();
       statusEl.style.display = 'none';
       bootControls.style.display = 'block';
       started = true;
-      UI.setSelectedSlot(0);
+      UI.setSelectedSlot(inventory.selected);
+      startAutosave();
       return;
     }
     requestAnimationFrame(gate);
   };
   gate();
+}
+
+// ---- Persistence -----------------------------------------------------------
+function gatherState() {
+  return {
+    seed: SEED, time: sky.getTime(),
+    player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch, mode: player.mode, flying: player.flying },
+    survival: { health: survival.health, hunger: survival.hunger, saturation: survival.saturation },
+    inventory: inventory.toJSON(),
+    furnaces: furnaces.toJSON(),
+    edits: world.collectEdits(),
+    savedAt: Math.floor(Date.now() / 1000),
+  };
+}
+let saving = false;
+async function saveGame(showToast = true) {
+  if (saving) return;
+  saving = true;
+  try { await Save.saveWorld(gatherState()); if (showToast) UI.showToast('World saved'); }
+  catch (e) { console.warn('save failed', e); if (showToast) UI.showToast('Save failed'); }
+  finally { saving = false; }
+}
+let autosaveTimer = null;
+function startAutosave() {
+  if (autosaveTimer) return;
+  autosaveTimer = setInterval(() => saveGame(false), 30000);
+  addEventListener('beforeunload', () => { try { Save.saveWorld(gatherState()); } catch {} });
 }
 function dropToGround() {
   let y = HEIGHT - 1;
@@ -357,7 +420,9 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-window.MC = { THREE, scene, camera, renderer, world, player, controls, inventory, interaction, drops, materials, atlas, daylight, sound, sky, survival, furnaces, UI };
+window.MC = { THREE, scene, camera, renderer, world, player, controls, inventory, interaction, drops, materials, atlas, daylight, sound, sky, survival, furnaces, UI, MCsave: Save };
+window.__mc_save = () => saveGame(false);
+Object.defineProperty(window, '__mc_loadedExisting', { get: () => loadedExisting });
 
 boot();
 requestAnimationFrame(frame);

@@ -545,3 +545,13 @@ canvas.item-icon {
 .boot-hint { font-size: 20px; color: #ffe873; text-shadow: 2px 2px 0 #000; margin: 6px 0 14px; }
 .boot-controls ul { list-style: none; margin: 0; padding: 0; text-align: left; font-size: 13px; line-height: 1.9; }
 .boot-controls b { color: #7fd858; }
+
+/* Pause menu action buttons */
+.pause-actions { display: flex; flex-direction: column; gap: 10px; align-items: center; margin: 14px 0; }
+.pause-actions button {
+  font-family: inherit; font-weight: bold; font-size: 15px; color: #fff;
+  background: #6a6a6a; border: 2px solid #000;
+  box-shadow: inset 2px 2px 0 #8b8b8b, inset -2px -2px 0 #4a4a4a;
+  padding: 8px 26px; min-width: 200px; cursor: pointer;
+}
+.pause-actions button:hover { background: #7a8a6a; box-shadow: inset 2px 2px 0 #9bab8b, inset -2px -2px 0 #5a6a4a; }

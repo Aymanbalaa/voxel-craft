@@ -1,0 +1,521 @@
+/* ============================================================================
+   voxel-craft UI stylesheet
+   Classic Minecraft-ish light-grey panel theme (#c6c6c6 panels, #8b8b8b slots,
+   beveled borders via box-shadow). Pixel font via ui-monospace, item icon
+   canvases forced to image-rendering:pixelated.
+   ========================================================================= */
+
+* {
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: ui-monospace, 'Courier New', monospace;
+  font-weight: bold;
+}
+
+canvas#game, canvas.game-canvas {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.hidden { display: none; }
+
+/* Every item icon canvas is drawn small (32x32) and scaled up crisp. */
+canvas.item-icon {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  width: 32px;
+  height: 32px;
+  pointer-events: none;
+}
+
+/* ============================================================================
+   Root + HUD
+   ========================================================================= */
+
+#ui-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none; /* individual interactive elements opt back in */
+  z-index: 10;
+}
+
+.hud {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* Crosshair: small white plus, visible on any background via difference blend. */
+.crosshair {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  transform: translate(-50%, -50%);
+  mix-blend-mode: difference;
+  pointer-events: none;
+}
+.crosshair::before,
+.crosshair::after {
+  content: '';
+  position: absolute;
+  background: #fff;
+}
+.crosshair::before { left: 9px; top: 1px; width: 2px; height: 18px; }
+.crosshair::after { top: 9px; left: 1px; width: 18px; height: 2px; }
+
+/* ============================================================================
+   Status bars: hearts / hunger / air
+   ========================================================================= */
+
+.status-bars {
+  position: fixed;
+  left: 50%;
+  bottom: 110px;
+  width: 364px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.meter-row {
+  display: flex;
+  gap: 2px;
+  height: 18px;
+  margin-bottom: 2px;
+}
+.meter-row.heart-row { justify-content: flex-start; }
+.meter-row.hunger-row { justify-content: flex-end; flex-direction: row-reverse; }
+
+.meter-icon {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  image-rendering: pixelated;
+  filter: drop-shadow(1px 1px 0 rgba(0,0,0,0.6));
+}
+
+/* Empty (background) sprite: a dark, "used up" pixel silhouette. */
+.meter-icon.heart-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9'%3E%3Cg fill='rgb(60,60,60)'%3E%3Crect x='1' y='0' width='2' height='1'/%3E%3Crect x='6' y='0' width='2' height='1'/%3E%3Crect x='0' y='1' width='4' height='1'/%3E%3Crect x='5' y='1' width='4' height='1'/%3E%3Crect x='0' y='2' width='9' height='1'/%3E%3Crect x='0' y='3' width='9' height='1'/%3E%3Crect x='1' y='4' width='7' height='1'/%3E%3Crect x='2' y='5' width='5' height='1'/%3E%3Crect x='3' y='6' width='3' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 18px 18px;
+}
+.meter-icon.hunger-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9'%3E%3Cg fill='rgb(60,60,60)'%3E%3Crect x='2' y='1' width='4' height='1'/%3E%3Crect x='1' y='2' width='6' height='1'/%3E%3Crect x='1' y='3' width='6' height='1'/%3E%3Crect x='2' y='4' width='5' height='1'/%3E%3Crect x='4' y='5' width='3' height='1'/%3E%3Crect x='5' y='6' width='3' height='1'/%3E%3Crect x='6' y='7' width='2' height='1'/%3E%3Crect x='7' y='8' width='1' height='1'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 18px 18px;
+}
+
+/* Filled (foreground) sprite lives in a width-clipped .meter-fill div so a
+   half-width fill reveals exactly the left half of the full icon. */
+.meter-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 0%;
+  overflow: hidden;
+  background-repeat: no-repeat;
+}
+.heart-icon .meter-fill {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9'%3E%3Cg fill='rgb(210,30,30)'%3E%3Crect x='1' y='0' width='2' height='1'/%3E%3Crect x='6' y='0' width='2' height='1'/%3E%3Crect x='0' y='1' width='4' height='1'/%3E%3Crect x='5' y='1' width='4' height='1'/%3E%3Crect x='0' y='2' width='9' height='1'/%3E%3Crect x='0' y='3' width='9' height='1'/%3E%3Crect x='1' y='4' width='7' height='1'/%3E%3Crect x='2' y='5' width='5' height='1'/%3E%3Crect x='3' y='6' width='3' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 18px 18px;
+}
+.hunger-icon .meter-fill {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9'%3E%3Cg fill='rgb(200,140,90)'%3E%3Crect x='2' y='1' width='4' height='1'/%3E%3Crect x='1' y='2' width='6' height='1'/%3E%3Crect x='1' y='3' width='6' height='1'/%3E%3Crect x='2' y='4' width='5' height='1'/%3E%3Crect x='4' y='5' width='3' height='1'/%3E%3Crect x='5' y='6' width='3' height='1'/%3E%3Crect x='6' y='7' width='2' height='1'/%3E%3Crect x='7' y='8' width='1' height='1'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 18px 18px;
+}
+/* Because .hunger-row is row-reverse, mirror each drumstick horizontally so
+   the bar reads as a mirror image of the health bar, as in vanilla MC. */
+.hunger-icon { transform: scaleX(-1); }
+
+.air-row { justify-content: flex-start; }
+.bubble-icon {
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.55);
+  background: transparent;
+  filter: drop-shadow(1px 1px 0 rgba(0,0,0,0.6));
+}
+.bubble-icon.full {
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.9), rgba(90,160,255,0.85) 70%);
+  border-color: rgba(255,255,255,0.85);
+}
+
+/* ============================================================================
+   Hotbar
+   ========================================================================= */
+
+.hotbar-wrap {
+  position: fixed;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+.hotbar-label {
+  color: #fff;
+  text-shadow: 1px 1px 2px #000, 0 0 6px rgba(0,0,0,0.8);
+  margin-bottom: 6px;
+  font-size: 15px;
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
+.hotbar-label.fade { opacity: 0; }
+
+.hotbar {
+  display: flex;
+  gap: 3px;
+  background: rgba(0,0,0,0.25);
+  padding: 3px;
+  border-radius: 2px;
+  pointer-events: auto;
+}
+
+/* ============================================================================
+   Slots (shared look for hotbar / inventory / craft / palette / furnace)
+   ========================================================================= */
+
+.slot {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  background: #8b8b8b;
+  box-shadow: inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.hotbar-slot {
+  width: 48px;
+  height: 48px;
+}
+.hotbar-slot.selected {
+  box-shadow: 0 0 0 2px #fff, inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff;
+  filter: brightness(1.25);
+  transform: translateY(-3px);
+}
+
+.slot-count {
+  position: absolute;
+  right: 2px;
+  bottom: 0px;
+  font-size: 12px;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000;
+  pointer-events: none;
+}
+
+/* ============================================================================
+   F3 debug overlay
+   ========================================================================= */
+
+.f3-overlay {
+  position: fixed;
+  top: 6px;
+  left: 6px;
+  margin: 0;
+  padding: 6px 8px;
+  color: #fff;
+  background: rgba(0,0,0,0.4);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre;
+  pointer-events: none;
+  max-width: 40vw;
+}
+
+/* ============================================================================
+   Cursor-held item, toast, damage flash
+   ========================================================================= */
+
+.cursor-item {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 32px;
+  height: 32px;
+  transform: translate(-16px, -16px);
+  z-index: 55;
+  pointer-events: none;
+}
+
+.toast {
+  position: fixed;
+  top: 14%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  padding: 8px 18px;
+  border-radius: 3px;
+  font-size: 14px;
+  z-index: 60;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; }
+
+.damage-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(255,0,0,0) 55%, rgba(255,0,0,0.55) 100%);
+}
+.damage-flash.pulse {
+  animation: damage-pulse 0.4s ease-out;
+}
+@keyframes damage-pulse {
+  0% { opacity: 0; }
+  25% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ============================================================================
+   Overlays: backdrop + generic screen/panel
+   ========================================================================= */
+
+.overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 50;
+  pointer-events: auto;
+}
+
+.screen {
+  position: fixed;
+  inset: 0;
+  z-index: 51;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.screen.open { display: flex; }
+
+.panel {
+  position: relative;
+  background: #c6c6c6;
+  color: #2b2b2b;
+  padding: 18px;
+  border: 2px solid #fff;
+  box-shadow: inset -2px -2px 0 #8b8b8b, inset 2px 2px 0 #fff, 0 6px 18px rgba(0,0,0,0.6);
+  pointer-events: auto;
+  min-width: 360px;
+}
+
+.panel-title {
+  font-size: 15px;
+  margin-bottom: 10px;
+  text-shadow: 1px 1px 0 rgba(255,255,255,0.4);
+}
+
+.close-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  background: #8b8b8b;
+  color: #fff;
+  border: none;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #373737;
+  font-family: inherit;
+  font-weight: bold;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.close-btn:hover { filter: brightness(1.15); }
+
+/* ============================================================================
+   Player inventory grid (27 main + 9 hotbar) — shared by inventory / creative
+   / furnace screens.
+   ========================================================================= */
+
+.inv-separator {
+  height: 10px;
+}
+
+.inv-main {
+  display: grid;
+  grid-template-columns: repeat(9, 40px);
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.inv-hotbar {
+  display: grid;
+  grid-template-columns: repeat(9, 40px);
+  gap: 4px;
+}
+
+/* ============================================================================
+   Survival inventory screen: crafting area
+   ========================================================================= */
+
+.craft-area {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 2px solid #8b8b8b;
+}
+
+.craft-grid {
+  display: grid;
+  gap: 4px;
+}
+.craft-grid.grid-2x2 { grid-template-columns: repeat(2, 40px); }
+.craft-grid.grid-3x3 { grid-template-columns: repeat(3, 40px); }
+
+.craft-arrow {
+  font-size: 22px;
+  color: #555;
+}
+
+.craft-result .slot {
+  box-shadow: inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff, 0 0 0 2px #d8c060;
+}
+
+/* ============================================================================
+   Creative palette
+   ========================================================================= */
+
+.creative-palette {
+  display: grid;
+  grid-template-columns: repeat(9, 40px);
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  padding: 4px;
+  background: rgba(0,0,0,0.06);
+  box-shadow: inset 1px 1px 0 #8b8b8b, inset -1px -1px 0 #fff;
+}
+
+/* ============================================================================
+   Furnace screen
+   ========================================================================= */
+
+.furnace-body {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 2px solid #8b8b8b;
+}
+
+.furnace-left {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.flame-gauge {
+  position: relative;
+  width: 16px;
+  height: 28px;
+  background: #4a4a4a;
+  box-shadow: inset 1px 1px 0 #262626, inset -1px -1px 0 #6a6a6a;
+  overflow: hidden;
+}
+.flame-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 0%;
+  background: linear-gradient(to top, #ff9a1f, #ffe066);
+}
+
+.furnace-arrow-wrap {
+  position: relative;
+  width: 48px;
+  height: 20px;
+}
+.furnace-arrow-bg,
+.furnace-arrow-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.furnace-arrow-bg {
+  width: 100%;
+  color: #9a9a9a;
+}
+.furnace-arrow-bg::after {
+  content: '\2192 \2192 \2192';
+  font-size: 18px;
+}
+.furnace-arrow-fill {
+  width: 0%;
+  color: #4caf50;
+}
+.furnace-arrow-fill::after {
+  content: '\2192 \2192 \2192';
+  font-size: 18px;
+}
+
+/* ============================================================================
+   Death screen
+   ========================================================================= */
+
+.death-panel {
+  text-align: center;
+  min-width: 320px;
+}
+.death-title {
+  color: #aa0000;
+  font-size: 32px;
+  margin: 0 0 18px 0;
+  text-shadow: 2px 2px 0 #000;
+}
+.respawn-btn {
+  font-family: inherit;
+  font-weight: bold;
+  font-size: 15px;
+  padding: 10px 26px;
+  background: #8b8b8b;
+  color: #fff;
+  border: none;
+  box-shadow: inset 2px 2px 0 #fff, inset -2px -2px 0 #373737;
+  cursor: pointer;
+}
+.respawn-btn:hover { filter: brightness(1.15); }
+.respawn-btn:active {
+  box-shadow: inset -2px -2px 0 #fff, inset 2px 2px 0 #373737;
+}

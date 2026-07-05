@@ -2,7 +2,7 @@
 // placement with player-collision veto, and block "use" (crafting table / furnace).
 
 import * as THREE from '../vendor/three.module.js';
-import { REACH, PLAYER } from './config.js';
+import { REACH, PLAYER, HEIGHT } from './config.js';
 import { B, BLOCKS, isSolid, IS_COLLIDE, blockDrop } from './blocks.js';
 import { isBlockItem, toolOf } from './items.js';
 
@@ -161,6 +161,7 @@ export class Interaction {
     const held = this.inv.hotbarStack();
     if (!held || !isBlockItem(held.id)) return;
     const [x, y, z] = t.place;
+    if (y < 0 || y >= HEIGHT) return;   // out of world → setBlock would no-op; don't consume the item
     if (this.world.getBlock(x, y, z) !== B.AIR && this.world.getBlock(x, y, z) !== B.WATER) return;
     // Torch only on top of / side of solids.
     if (held.id === B.TORCH) {

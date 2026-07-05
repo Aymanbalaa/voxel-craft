@@ -138,6 +138,7 @@ export class Interaction {
     this.world.setBlock(x, y, z, B.AIR);
     this.sound?.play?.('break', { volume: 0.6 });
     if (drop && this.drops) this.drops.spawn(x + 0.5, y + 0.5, z + 0.5, drop.id, drop.count);
+    this.onBlockBroken?.(id, x, y, z);
     // Update lighting/supported plants above (e.g. break dirt under grass/flower).
     const above = this.world.getBlock(x, y + 1, z);
     if (above === B.TALL_GRASS || above === B.POPPY || above === B.DANDELION || above === B.DEAD_BUSH ||

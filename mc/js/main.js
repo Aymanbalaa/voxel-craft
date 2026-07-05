@@ -17,6 +17,9 @@ import { Drops } from './drops.js';
 import { matchRecipe } from './recipes.js';
 import { sound } from './sound.js';
 import { Sky } from './sky.js';
+import { Survival } from './survival.js';
+import { Furnaces } from './furnace.js';
+import { foodValue } from './items.js';
 import * as UI from './ui.js';
 
 const SEED = 20260705;
@@ -70,6 +73,8 @@ const spawnH = surfaceHeight(SEED, 8, 8);
 const player = new Player(world, { x: 8.5, y: spawnH + 2, z: 8.5 });
 const inventory = new Inventory();
 const drops = new Drops({ scene, world, inventory, atlasTex: tex, faceTiles, TILES: atlas.TILES, sound });
+const survival = new Survival();
+const furnaces = new Furnaces();
 
 // Item-icon rendering (cached) — blocks become iso cubes, items flat tiles.
 const iconCache = new Map();
@@ -102,7 +107,7 @@ UI.initUI({
     for (let i = 0; i < grid.length; i++) if (grid[i] === undefined) grid[i] = null;
   },
   callbacks: {
-    onClose() { relock(); },
+    onClose() { openFurnace = null; relock(); },
   },
 });
 inventory.onChange = () => { UI.updateHotbar(); };
@@ -110,7 +115,20 @@ inventory.onChange = () => { UI.updateHotbar(); };
 // ---- Interaction -----------------------------------------------------------
 const interaction = new Interaction({ world, camera, player, inventory, scene, sound, ui: UI, atlas, drops });
 interaction.onOpenTable = () => { UI.toggleInventory(true); document.exitPointerLock(); };
-interaction.onOpenFurnace = () => { UI.showToast('Furnace coming soon'); };
+let openFurnace = null;   // furnace state currently shown in the UI
+interaction.onOpenFurnace = (pos) => {
+  const f = furnaces.get(pos[0], pos[1], pos[2]);
+  openFurnace = { slots: f.slots, progress: f.progress, burn: f.burn, _f: f };
+  UI.openFurnace(openFurnace);
+  document.exitPointerLock();
+};
+interaction.onBlockBroken = (id, x, y, z) => {
+  if (id === B.FURNACE) {
+    const f = furnaces.remove(x, y, z);
+    if (f) for (const s of [f.slots.input, f.slots.fuel, f.slots.output])
+      if (s) drops.spawn(x + 0.5, y + 0.5, z + 0.5, s.id, s.count);
+  }
+};
 
 // ---- Give the player a starter kit (creative-ish convenience) --------------
 inventory.set(0, { id: I.DIAMOND_PICKAXE, count: 1 });
@@ -201,6 +219,7 @@ function dropToGround() {
 // ---- Main loop -------------------------------------------------------------
 const STEP = 1 / 60;
 let acc = 0, last = performance.now(), fps = 0, fpsT = 0, fpsN = 0;
+let air = 10, drownTimer = 0;
 const EMPTY = { forward:0,back:0,left:0,right:0,jump:0,sneak:0,sprint:0 };
 
 function frame(now) {
@@ -227,11 +246,33 @@ function frame(now) {
     if (active) {
       interaction.updateTarget();
       interaction.updateBreaking(dt, controls.mouseButtons.has(0));
+      handleEating(dt);
+      handleFootsteps(dt);
     } else {
       interaction.selMesh.visible = false;
       interaction._cancelBreak();
+      eatTimer = 0;
     }
     drops.update(dt, player.pos, camera);
+    furnaces.update(dt);
+    if (openFurnace) { // animate gauges / reflect auto-smelt while open
+      openFurnace.progress = openFurnace._f.progress;
+      openFurnace.burn = openFurnace._f.burn;
+      UI.updateFurnace(openFurnace);
+    }
+    // Breath / drowning.
+    if (player.headInWater) {
+      air -= dt;
+      if (air <= 0) { air = 0; drownTimer += dt; if (drownTimer >= 1) { drownTimer = 0; hurt(2); } }
+    } else { air = Math.min(10, air + dt * 4); drownTimer = 0; }
+
+    if (player.mode === 'survival') {
+      survival.update(dt, player);
+      if (player.pos.y < -8) hurt(4);            // void damage
+      const feet = world.getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y), Math.floor(player.pos.z));
+      if (feet === B.LAVA) hurt(4);
+      if (survival.dead) die();
+    }
     world.update(player.pos.x, player.pos.z);
   }
 
@@ -243,22 +284,62 @@ function frame(now) {
 }
 
 function hurt(dmg) {
-  health = Math.max(0, health - dmg);
-  sound.play?.('hurt', { volume: 0.6 });
-  UI.flashDamage();
-  if (health <= 0) respawn();
+  if (player.mode === 'creative') return;
+  if (survival.hurt(dmg)) { sound.play?.('hurt', { volume: 0.6 }); UI.flashDamage(); }
+  if (survival.dead) die();
 }
-let health = 20, hunger = 20;
-function respawn() {
-  health = 20; hunger = 20;
-  dropToGround();
-  player.pos.x = 8.5; player.pos.z = 8.5;
-  player.vel.x = player.vel.y = player.vel.z = 0;
+let dying = false;
+function die() {
+  if (dying) return;
+  dying = true;
+  sound.play?.('death', { volume: 0.7 });
+  document.exitPointerLock();
+  UI.showDeath(() => {
+    survival.reset();
+    player.pos.x = 8.5; player.pos.z = 8.5;
+    dropToGround();
+    player.vel.x = player.vel.y = player.vel.z = 0;
+    dying = false;
+    relock();
+  });
+}
+
+// Hold right-click with food selected to eat.
+let eatTimer = 0;
+function handleEating(dt) {
+  const held = inventory.hotbarStack();
+  const canEat = held && foodValue(held.id) && (player.mode === 'creative' || survival.hunger < 20);
+  if (canEat && controls.mouseButtons.has(2)) {
+    eatTimer += dt;
+    if (eatTimer % 0.3 < dt) sound.play?.('eat', { volume: 0.4 });
+    if (eatTimer >= 1.3) {
+      eatTimer = 0;
+      if (player.mode !== 'creative') { survival.eat(held.id); inventory.consumeSelected(); }
+      sound.play?.('burp', { volume: 0.4 });
+    }
+  } else eatTimer = 0;
+}
+
+// Footstep sounds keyed to the ground block, paced by distance travelled.
+let stepDist = 0;
+function handleFootsteps(dt) {
+  if (!player.onGround || player.inWater) { return; }
+  const hv = Math.hypot(player.vel.x, player.vel.z);
+  stepDist += hv * dt;
+  if (stepDist > 2.2) {
+    stepDist = 0;
+    const g = world.getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.1), Math.floor(player.pos.z));
+    const name = g === B.SAND || g === B.GRAVEL ? 'step_sand'
+      : (BLOCKS[g]?.tool === 'axe' ? 'step_wood'
+      : (g === B.STONE || g === B.COBBLE || BLOCKS[g]?.tool === 'pickaxe' ? 'step_stone' : 'step_grass'));
+    sound.play?.(name, { volume: 0.25, pitch: 0.9 + Math.random() * 0.2 });
+  }
 }
 
 function updateHUD() {
   UI.updateHUD({
-    health, hunger, air: player.headInWater ? 6 : 10,
+    health: survival.health, hunger: survival.hunger,
+    air: Math.ceil(air),
     mode: player.mode,
     showF3,
     f3lines: showF3 ? [
@@ -276,7 +357,7 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-window.MC = { THREE, scene, camera, renderer, world, player, controls, inventory, interaction, drops, materials, atlas, daylight, sound, sky, UI, get health(){return health;} };
+window.MC = { THREE, scene, camera, renderer, world, player, controls, inventory, interaction, drops, materials, atlas, daylight, sound, sky, survival, furnaces, UI };
 
 boot();
 requestAnimationFrame(frame);

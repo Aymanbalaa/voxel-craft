@@ -16,6 +16,7 @@ import { Interaction } from './interaction.js';
 import { Drops } from './drops.js';
 import { matchRecipe } from './recipes.js';
 import { sound } from './sound.js';
+import { Sky } from './sky.js';
 import * as UI from './ui.js';
 
 const SEED = 20260705;
@@ -64,6 +65,7 @@ const materials = {
 
 // ---- Core systems ----------------------------------------------------------
 const world = new World({ seed: SEED, scene, materials, faceTiles });
+const sky = new Sky({ scene, camera, daylight });
 const spawnH = surfaceHeight(SEED, 8, 8);
 const player = new Player(world, { x: 8.5, y: spawnH + 2, z: 8.5 });
 const inventory = new Inventory();
@@ -220,6 +222,7 @@ function frame(now) {
     }
     camera.position.set(player.pos.x, player.eyeY(), player.pos.z);
     camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
+    sky.update(dt);
 
     if (active) {
       interaction.updateTarget();
@@ -273,7 +276,7 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-window.MC = { THREE, scene, camera, renderer, world, player, controls, inventory, interaction, drops, materials, atlas, daylight, sound, UI, get health(){return health;} };
+window.MC = { THREE, scene, camera, renderer, world, player, controls, inventory, interaction, drops, materials, atlas, daylight, sound, sky, UI, get health(){return health;} };
 
 boot();
 requestAnimationFrame(frame);

@@ -30,7 +30,7 @@ class Chunk {
 }
 
 export class World {
-  constructor({ seed, scene, materials, faceTiles }) {
+  constructor({ seed, scene, materials, faceTiles, TILES }) {
     this.seed = seed;
     this.scene = scene;
     this.materials = materials;   // { opaque, water }
@@ -46,7 +46,7 @@ export class World {
 
     this.worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
     this.worker.onmessage = (e) => this._onWorker(e.data);
-    this.worker.postMessage({ t: 'init', seed, faceTiles });
+    this.worker.postMessage({ t: 'init', seed, faceTiles, TILES });
     this.ready = false;
     this._initResolve = null;
     this.whenReady = new Promise(r => (this._initResolve = r));
@@ -260,6 +260,7 @@ export class World {
     g.setAttribute('position', new THREE.BufferAttribute(data.position, 3));
     g.setAttribute('uv', new THREE.BufferAttribute(data.uv, 2));
     g.setAttribute('color', new THREE.BufferAttribute(data.color, 3, true)); // normalized
+    if (data.tint) g.setAttribute('atint', new THREE.BufferAttribute(data.tint, 3, true)); // per-biome grass tint
     g.setIndex(new THREE.BufferAttribute(data.index, 1));
     g.computeBoundingSphere();
     const mesh = new THREE.Mesh(g, material);

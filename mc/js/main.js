@@ -60,16 +60,22 @@ const waterTime = { value: 0 }; // seconds, drives animated water surface
 function patchLight(mat, water = false) {
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uDaylight = daylight;
+    // Per-biome grass tint rides a custom `atint` vertex attribute → fragment.
+    // White (1,1,1) everywhere except grass, so it's a no-op for all other blocks.
+    let vHead = 'attribute vec3 atint;\nvarying vec3 vTint;\n';
+    let vBody = 'vTint = atint;';
     if (water) {
       shader.uniforms.uTime = waterTime;
-      shader.vertexShader = 'uniform float uTime;\nvarying vec3 vWPos;\n' + shader.vertexShader.replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
+      vHead += 'uniform float uTime;\nvarying vec3 vWPos;\n';
+      vBody += `
          vec3 _wp0 = (modelMatrix * vec4(transformed, 1.0)).xyz;
          transformed.y += 0.045 * sin(uTime * 1.6 + _wp0.x * 0.7) * cos(uTime * 1.2 + _wp0.z * 0.7);
-         vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
+         vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`;
     }
-    const preamble = 'uniform float uDaylight;\n' + (water ? 'uniform float uTime;\nvarying vec3 vWPos;\n' : '');
+    shader.vertexShader = vHead + shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>\n         ${vBody}`);
+    const preamble = 'uniform float uDaylight;\nvarying vec3 vTint;\n' + (water ? 'uniform float uTime;\nvarying vec3 vWPos;\n' : '');
     shader.fragmentShader = preamble + shader.fragmentShader.replace(
       '#include <color_fragment>',
       `#ifdef USE_COLOR
@@ -77,6 +83,7 @@ function patchLight(mat, water = false) {
          ${water
            ? 'float _sh = 0.90 + 0.10 * sin(uTime * 2.0 + vWPos.x * 1.3 + vWPos.z * 1.3);\n         diffuseColor.rgb *= max(_light, 0.05) * _sh;'
            : 'diffuseColor.rgb *= max(_light, 0.05);'}
+         diffuseColor.rgb *= vTint;
        #endif`);
   };
   mat.customProgramCacheKey = () => 'voxel-light-' + (water ? 'w' : 'o');
@@ -88,7 +95,7 @@ const materials = {
 };
 
 // ---- Core systems ----------------------------------------------------------
-const world = new World({ seed: SEED, scene, materials, faceTiles });
+const world = new World({ seed: SEED, scene, materials, faceTiles, TILES: atlas.TILES });
 const sky = new Sky({ scene, camera, daylight });
 const spawnH = surfaceHeight(SEED, 8, 8);
 const player = new Player(world, { x: 8.5, y: spawnH + 2, z: 8.5 });

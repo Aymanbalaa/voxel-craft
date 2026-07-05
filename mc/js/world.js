@@ -147,6 +147,9 @@ export class World {
     const R = RENDER_DIST + 2;
     for (const [k, c] of this.chunks) {
       if (Math.abs(c.cx - pcx) > R || Math.abs(c.cz - pcz) > R) {
+        // Preserve player edits before dropping the chunk from memory, so they
+        // survive unload (restored on reload) and still reach the next save.
+        if (c.blocks && this.editedChunks.has(k)) this.savedEdits.set(k, c.blocks);
         this._disposeMesh(c);
         this.chunks.delete(k);
       }
@@ -272,8 +275,14 @@ export class World {
     c.opaqueMesh = null; c.waterMesh = null;
   }
 
-  // Provide saved edits (loaded from disk) to overlay onto generation.
-  setSavedEdits(map) { this.savedEdits = map || new Map(); }
+  // Provide saved edits (loaded from disk) to overlay onto generation. These are
+  // player edits and must keep being persisted even if their chunks are never
+  // revisited this session, so register their keys as edited (collectEdits only
+  // walks editedChunks — otherwise unvisited saved chunks silently drop on save).
+  setSavedEdits(map) {
+    this.savedEdits = map || new Map();
+    for (const k of this.savedEdits.keys()) this.editedChunks.add(k);
+  }
 
   // Collect edited chunks as {cx,cz,blocks} copies for saving.
   collectEdits() {

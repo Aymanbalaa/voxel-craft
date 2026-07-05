@@ -84,40 +84,45 @@ canvas.item-icon {
    Status bars: hearts / hunger / air
    ========================================================================= */
 
+/* Sized to the hotbar (9×48 + gaps + padding ≈ 462px) and anchored just above
+   it, so hearts pin to the left edge and hunger to the right edge on one line,
+   with the air row tucked beneath the hearts — the classic vanilla layout. */
 .status-bars {
   position: fixed;
   left: 50%;
-  bottom: 110px;
-  width: 364px;
+  bottom: 74px;
+  width: 462px;
+  height: 44px;
   transform: translateX(-50%);
   pointer-events: none;
 }
 
 .meter-row {
+  position: absolute;
   display: flex;
-  gap: 2px;
-  height: 18px;
-  margin-bottom: 2px;
+  gap: 1px;
+  height: 20px;
 }
-.meter-row.heart-row { justify-content: flex-start; }
-.meter-row.hunger-row { justify-content: flex-end; flex-direction: row-reverse; }
+.meter-row.heart-row { left: 0; bottom: 22px; }
+.meter-row.hunger-row { right: 0; bottom: 22px; flex-direction: row-reverse; }
+.air-row { right: 0; bottom: 0; }
 
 .meter-icon {
   position: relative;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   image-rendering: pixelated;
-  filter: drop-shadow(1px 1px 0 rgba(0,0,0,0.6));
+  filter: drop-shadow(1px 1px 1px rgba(0,0,0,0.85));
 }
 
 /* Empty (background) sprite: a dark, "used up" pixel silhouette. */
 .meter-icon.heart-icon {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9'%3E%3Cg fill='rgb(60,60,60)'%3E%3Crect x='1' y='0' width='2' height='1'/%3E%3Crect x='6' y='0' width='2' height='1'/%3E%3Crect x='0' y='1' width='4' height='1'/%3E%3Crect x='5' y='1' width='4' height='1'/%3E%3Crect x='0' y='2' width='9' height='1'/%3E%3Crect x='0' y='3' width='9' height='1'/%3E%3Crect x='1' y='4' width='7' height='1'/%3E%3Crect x='2' y='5' width='5' height='1'/%3E%3Crect x='3' y='6' width='3' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3C/g%3E%3C/svg%3E");
-  background-size: 18px 18px;
+  background-size: 20px 20px;
 }
 .meter-icon.hunger-icon {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9'%3E%3Cg fill='rgb(60,60,60)'%3E%3Crect x='2' y='1' width='4' height='1'/%3E%3Crect x='1' y='2' width='6' height='1'/%3E%3Crect x='1' y='3' width='6' height='1'/%3E%3Crect x='2' y='4' width='5' height='1'/%3E%3Crect x='4' y='5' width='3' height='1'/%3E%3Crect x='5' y='6' width='3' height='1'/%3E%3Crect x='6' y='7' width='2' height='1'/%3E%3Crect x='7' y='8' width='1' height='1'/%3E%3C/g%3E%3C/svg%3E");
-  background-size: 18px 18px;
+  background-size: 20px 20px;
 }
 
 /* Filled (foreground) sprite lives in a width-clipped .meter-fill div so a
@@ -133,25 +138,24 @@ canvas.item-icon {
 }
 .heart-icon .meter-fill {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9'%3E%3Cg fill='rgb(210,30,30)'%3E%3Crect x='1' y='0' width='2' height='1'/%3E%3Crect x='6' y='0' width='2' height='1'/%3E%3Crect x='0' y='1' width='4' height='1'/%3E%3Crect x='5' y='1' width='4' height='1'/%3E%3Crect x='0' y='2' width='9' height='1'/%3E%3Crect x='0' y='3' width='9' height='1'/%3E%3Crect x='1' y='4' width='7' height='1'/%3E%3Crect x='2' y='5' width='5' height='1'/%3E%3Crect x='3' y='6' width='3' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3C/g%3E%3C/svg%3E");
-  background-size: 18px 18px;
+  background-size: 20px 20px;
 }
 .hunger-icon .meter-fill {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9'%3E%3Cg fill='rgb(200,140,90)'%3E%3Crect x='2' y='1' width='4' height='1'/%3E%3Crect x='1' y='2' width='6' height='1'/%3E%3Crect x='1' y='3' width='6' height='1'/%3E%3Crect x='2' y='4' width='5' height='1'/%3E%3Crect x='4' y='5' width='3' height='1'/%3E%3Crect x='5' y='6' width='3' height='1'/%3E%3Crect x='6' y='7' width='2' height='1'/%3E%3Crect x='7' y='8' width='1' height='1'/%3E%3C/g%3E%3C/svg%3E");
-  background-size: 18px 18px;
+  background-size: 20px 20px;
 }
 /* Because .hunger-row is row-reverse, mirror each drumstick horizontally so
    the bar reads as a mirror image of the health bar, as in vanilla MC. */
 .hunger-icon { transform: scaleX(-1); }
 
-.air-row { justify-content: flex-start; }
 .bubble-icon {
-  width: 14px;
-  height: 14px;
-  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  margin-left: 2px;
   border-radius: 50%;
-  border: 2px solid rgba(255,255,255,0.55);
+  border: 2px solid rgba(255,255,255,0.6);
   background: transparent;
-  filter: drop-shadow(1px 1px 0 rgba(0,0,0,0.6));
+  filter: drop-shadow(1px 1px 1px rgba(0,0,0,0.8));
 }
 .bubble-icon.full {
   background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.9), rgba(90,160,255,0.85) 70%);
@@ -173,11 +177,22 @@ canvas.item-icon {
   pointer-events: none;
 }
 
+/* Floats above the status bars (which occupy the space just over the hotbar),
+   so the item name never collides with the hearts/hunger/air rows. */
 .hotbar-label {
+  position: fixed;
+  left: 50%;
+  bottom: 130px;
+  transform: translateX(-50%);
+  white-space: nowrap;
   color: #fff;
-  text-shadow: 1px 1px 2px #000, 0 0 6px rgba(0,0,0,0.8);
-  margin-bottom: 6px;
-  font-size: 15px;
+  text-shadow: 1px 1px 0 #000;
+  padding: 3px 12px;
+  font-size: 14px;
+  letter-spacing: 0.2px;
+  background: rgba(15,15,20,0.55);
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
   opacity: 1;
   transition: opacity 0.4s ease;
 }
@@ -186,9 +201,12 @@ canvas.item-icon {
 .hotbar {
   display: flex;
   gap: 3px;
-  background: rgba(0,0,0,0.25);
-  padding: 3px;
-  border-radius: 2px;
+  background: rgba(18,18,22,0.55);
+  padding: 4px;
+  border-radius: 5px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.14),
+    0 3px 10px rgba(0,0,0,0.45);
   pointer-events: auto;
 }
 
@@ -212,11 +230,16 @@ canvas.item-icon {
 .hotbar-slot {
   width: 48px;
   height: 48px;
+  transition: transform 0.08s ease;
 }
 .hotbar-slot.selected {
-  box-shadow: 0 0 0 2px #fff, inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff;
-  filter: brightness(1.25);
-  transform: translateY(-3px);
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 6px 2px rgba(255,255,255,0.5),
+    inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff;
+  filter: brightness(1.18);
+  transform: translateY(-2px);
+  z-index: 1;
 }
 
 .slot-count {

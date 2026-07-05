@@ -73,10 +73,16 @@ function leaves(ctx, rng, shades) {
     const [r, g, b] = pick(nz(x, y), shades);
     px(ctx, x, y, r, g, b);
   }
-  // a few darker pockets (not transparent — Phase 2 handles cutout)
-  for (let i = 0; i < 6; i++) {
+  // darker pockets for depth
+  for (let i = 0; i < 5; i++) {
     const x = (nz(i * 3 + 1, i) * TILE) | 0, y = (nz(i, i * 2 + 1) * TILE) | 0;
     const [r, g, b] = pick(0, shades); px(ctx, x, y, clamp8(r * 0.7), clamp8(g * 0.7), clamp8(b * 0.7));
+  }
+  // Transparent cutout holes: the opaque material's alphaTest (0.5) discards
+  // these fragments, giving a see-through "fancy" canopy instead of a solid blob.
+  for (let i = 0; i < 13; i++) {
+    const x = (nz(i + 5, i * 2) * TILE) | 0, y = (nz(i * 2, i + 7) * TILE) | 0;
+    ctx.clearRect(x, y, 1, 1);
   }
 }
 const LEAF_OAK = [[54, 108, 40], [64, 122, 46], [46, 96, 36], [70, 130, 52]];

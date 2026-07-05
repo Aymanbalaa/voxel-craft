@@ -69,6 +69,19 @@ function fullyOpaque(name) {
 }
 for (const n of ['stone', 'dirt', 'grass_top', 'sand', 'gravel', 'oak_log', 'oak_planks']) ok(fullyOpaque(n), `${n} is fully opaque`);
 
+// --- Leaf cutout: leaves must have transparent holes (alphaTest canopy) ---
+function hasTransparentPixels(name) {
+  const idx = TILES[name]; const { ctx, buf } = makeMockCtx();
+  GENERATORS[name](ctx, makeRng(idx));
+  let clear = 0;
+  for (let i = 3; i < buf.length; i += 4) if (buf[i] === 0) clear++;
+  return clear;
+}
+for (const n of ['oak_leaves', 'birch_leaves', 'spruce_leaves']) {
+  const holes = hasTransparentPixels(n);
+  ok(holes >= 5, `${n} has cutout holes (${holes} transparent px >= 5)`);
+}
+
 // --- Override selection logic ---
 ok(chooseSource({ width: TILE, height: TILE }, () => {}) === 'png', 'valid 16x16 PNG wins');
 ok(chooseSource(null, () => {}) === 'gen', 'missing PNG falls back to generator');

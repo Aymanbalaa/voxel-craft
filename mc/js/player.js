@@ -131,8 +131,15 @@ export class Player {
     // Integrate with per-axis collision resolution.
     const wasGround = this.onGround;
     this.onGround = false;
+    // Sneak edge-guard: while sneaking on the ground, veto any horizontal move
+    // that would leave the player standing over a gap (classic MC ledge-guard).
+    const sneakGuard = this.sneaking && wasGround && !this.flying && !this.inWater;
+    const preX = this.pos.x;
     this._moveAxis('x', this.vel.x * dt);
+    if (sneakGuard && !this._overGround()) { this.pos.x = preX; this.vel.x = 0; }
+    const preZ = this.pos.z;
     this._moveAxis('z', this.vel.z * dt);
+    if (sneakGuard && !this._overGround()) { this.pos.z = preZ; this.vel.z = 0; }
     const hitY = this._moveAxis('y', this.vel.y * dt);
 
     if (hitY === 'down') {
@@ -145,9 +152,6 @@ export class Player {
       this.fallStart = null;
       this.onGround = true;
     }
-
-    // Sneak edge-guard: if on ground and sneaking, don't walk off ledges.
-    if (this.sneaking && wasGround) this._sneakEdgeGuard();
 
     return events;
   }
@@ -177,16 +181,12 @@ export class Player {
     return axis;
   }
 
-  // Prevent walking off edges while sneaking (classic MC ledge-guard).
-  _sneakEdgeGuard() {
-    // If there's no ground under the full footprint after the move, roll back to over-ground.
-    const under = (x, z) => this._solid(Math.floor(x), Math.floor(this.pos.y - 0.05), Math.floor(z));
-    const grounded = under(this.pos.x - HW, this.pos.z - HW) || under(this.pos.x + HW, this.pos.z - HW) ||
-                     under(this.pos.x - HW, this.pos.z + HW) || under(this.pos.x + HW, this.pos.z + HW) ||
-                     under(this.pos.x, this.pos.z);
-    if (!grounded) {
-      // We only reach here if a previous ground existed; nudge back handled by zeroing velocity.
-      this.vel.x = 0; this.vel.z = 0;
-    }
+  // Is any part of the player's footprint standing over solid ground?
+  _overGround() {
+    const y = Math.floor(this.pos.y - 0.05);
+    const under = (x, z) => this._solid(Math.floor(x), y, Math.floor(z));
+    return under(this.pos.x - HW, this.pos.z - HW) || under(this.pos.x + HW, this.pos.z - HW) ||
+           under(this.pos.x - HW, this.pos.z + HW) || under(this.pos.x + HW, this.pos.z + HW) ||
+           under(this.pos.x, this.pos.z);
   }
 }

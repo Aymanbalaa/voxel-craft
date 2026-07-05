@@ -2,12 +2,16 @@
 // Module worker: new Worker('./worker.js', { type:'module' }).
 // All heavy pure code (worldgen/lighting/mesher) imported directly.
 
-import { generateChunk } from './worldgen.js';
+import { generateChunk, biomeAt, biomeTint } from './worldgen.js';
 import { buildSlab, computeLight } from './lighting.js';
 import { meshChunk } from './mesher.js';
+import { CHUNK } from './config.js';
+
+const WHITE = [255, 255, 255];
 
 let SEED = 0;
 let faceTiles = null;
+let GRASS_TOP = -1, TALL_GRASS = -1; // tile indices that get per-biome tint
 
 self.onmessage = (e) => {
   const msg = e.data;
@@ -15,6 +19,9 @@ self.onmessage = (e) => {
     case 'init': {
       SEED = msg.seed;
       faceTiles = msg.faceTiles;       // Uint16Array(256*6)
+      const TILES = msg.TILES || {};   // tile name → atlas index
+      GRASS_TOP = TILES.grass_top ?? -1;
+      TALL_GRASS = TILES.tall_grass ?? -1;
       self.postMessage({ t: 'ready' });
       break;
     }
@@ -28,10 +35,14 @@ self.onmessage = (e) => {
       const bufs = msg.chunks.map(b => b ? new Uint8Array(b) : null);
       const slab = buildSlab(bufs);
       const light = computeLight(slab);
-      const m = meshChunk(slab, light, faceTiles);
+      // Per-biome grass tint: recompute biome per world column (grass tiles only).
+      const ox = msg.cx * CHUNK, oz = msg.cz * CHUNK;
+      const tintAt = (lx, lz, tile) => (tile === GRASS_TOP || tile === TALL_GRASS)
+        ? biomeTint(biomeAt(SEED, ox + lx, oz + lz)) : WHITE;
+      const m = meshChunk(slab, light, faceTiles, tintAt);
       const transfer = [
-        m.opaque.position.buffer, m.opaque.uv.buffer, m.opaque.color.buffer, m.opaque.index.buffer,
-        m.water.position.buffer, m.water.uv.buffer, m.water.color.buffer, m.water.index.buffer,
+        m.opaque.position.buffer, m.opaque.uv.buffer, m.opaque.color.buffer, m.opaque.tint.buffer, m.opaque.index.buffer,
+        m.water.position.buffer, m.water.uv.buffer, m.water.color.buffer, m.water.tint.buffer, m.water.index.buffer,
       ];
       self.postMessage({ t: 'mesh', cx: msg.cx, cz: msg.cz, rev: msg.rev, opaque: m.opaque, water: m.water }, transfer);
       break;

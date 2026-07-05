@@ -82,7 +82,7 @@ export class Controls {
   // Consume accumulated mouse look and apply to yaw/pitch (returns updated angles).
   applyLook(player) {
     if (this._look.dx || this._look.dy) {
-      player.yaw += this._look.dx * this.sensitivity;
+      player.yaw -= this._look.dx * this.sensitivity;
       player.pitch -= this._look.dy * this.sensitivity;
       const lim = Math.PI / 2 - 0.001;
       if (player.pitch > lim) player.pitch = lim;

@@ -35,7 +35,13 @@ function fields(seed) {
     cave1: base.derive('cave1'),
     cave2: base.derive('cave2'),
     caveCheese: base.derive('cheese'),
-    ore: base.derive('ore'),
+    // Pre-derive ore noise fields ONCE (deriving per-voxel rebuilds a 256-perm
+    // table millions of times per chunk — the single biggest gen cost).
+    oreDiamond: base.derive('ore').derive('diamond'),
+    oreRedstone: base.derive('ore').derive('redstone'),
+    oreGold: base.derive('ore').derive('gold'),
+    oreIron: base.derive('ore').derive('iron'),
+    oreCoal: base.derive('ore').derive('coal'),
     surface: base.derive('surfacevar'),
     tree: base.derive('tree'),
     detail: base.derive('detail'),
@@ -117,14 +123,13 @@ function isCave(f, wx, y, wz) {
 
 function oreAt(f, wx, y, wz) {
   // Each ore is a thresholded high-freq 3D noise, gated to a depth band.
-  const n = (salt, sc) => f.ore.derive(salt).simplex3(wx * sc, y * sc, wz * sc);
   if (y < 16) {
-    if (n('diamond', 0.11) > 0.86) return B.DIAMOND_ORE;
-    if (n('redstone', 0.10) > 0.80) return B.REDSTONE_ORE;
+    if (f.oreDiamond.simplex3(wx * 0.11, y * 0.11, wz * 0.11) > 0.86) return B.DIAMOND_ORE;
+    if (f.oreRedstone.simplex3(wx * 0.10, y * 0.10, wz * 0.10) > 0.80) return B.REDSTONE_ORE;
   }
-  if (y < 32 && n('gold', 0.10) > 0.85) return B.GOLD_ORE;
-  if (y < 64 && n('iron', 0.09) > 0.80) return B.IRON_ORE;
-  if (y < 128 && n('coal', 0.08) > 0.80) return B.COAL_ORE;
+  if (y < 32 && f.oreGold.simplex3(wx * 0.10, y * 0.10, wz * 0.10) > 0.85) return B.GOLD_ORE;
+  if (y < 64 && f.oreIron.simplex3(wx * 0.09, y * 0.09, wz * 0.09) > 0.80) return B.IRON_ORE;
+  if (y < 128 && f.oreCoal.simplex3(wx * 0.08, y * 0.08, wz * 0.08) > 0.80) return B.COAL_ORE;
   return 0;
 }
 

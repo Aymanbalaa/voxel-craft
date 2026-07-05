@@ -1,2 +1,4 @@
 node_modules/
 *.log
+mc/node_modules/
+mc/test/*.png

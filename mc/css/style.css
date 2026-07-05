@@ -519,3 +519,29 @@ canvas.item-icon {
 .respawn-btn:active {
   box-shadow: inset -2px -2px 0 #fff, inset 2px 2px 0 #373737;
 }
+
+/* ============================================================================
+   Boot / loading + click-to-play overlay (added by main integration)
+   ========================================================================= */
+#boot-overlay {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center, #4a6ea9 0%, #23324d 100%);
+  color: #fff; cursor: pointer;
+  transition: opacity 0.25s ease;
+}
+#boot-overlay.hidden { opacity: 0; pointer-events: none; }
+.boot-card {
+  background: rgba(0, 0, 0, 0.55);
+  border: 2px solid #000;
+  box-shadow: inset 2px 2px 0 #7a7a7a, inset -2px -2px 0 #2a2a2a, 0 8px 30px rgba(0,0,0,.5);
+  padding: 26px 40px; text-align: center; max-width: 460px; border-radius: 2px;
+}
+.boot-card h1 {
+  margin: 0 0 10px; font-size: 44px; letter-spacing: 3px;
+  color: #7fd858; text-shadow: 3px 3px 0 #2a5a1e;
+}
+.boot-status { font-size: 15px; opacity: 0.85; margin: 8px 0; }
+.boot-hint { font-size: 20px; color: #ffe873; text-shadow: 2px 2px 0 #000; margin: 6px 0 14px; }
+.boot-controls ul { list-style: none; margin: 0; padding: 0; text-align: left; font-size: 13px; line-height: 1.9; }
+.boot-controls b { color: #7fd858; }

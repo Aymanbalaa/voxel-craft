@@ -51,23 +51,40 @@ tex.needsUpdate = true;
 
 const faceTiles = buildFaceTiles(BLOCKS, atlas.TILES);
 const daylight = { value: 1.0 };
+const waterTime = { value: 0 }; // seconds, drives animated water surface
 
-function patchLight(mat) {
+// Injects the baked-light term into a MeshBasicMaterial. When `water` is set,
+// also adds a gentle world-space surface ripple (vertex) + brightness shimmer
+// (fragment) driven by the shared uTime uniform — animation without scrolling
+// UVs (which would bleed across neighbouring atlas cells).
+function patchLight(mat, water = false) {
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uDaylight = daylight;
-    shader.fragmentShader = 'uniform float uDaylight;\n' + shader.fragmentShader.replace(
+    if (water) {
+      shader.uniforms.uTime = waterTime;
+      shader.vertexShader = 'uniform float uTime;\nvarying vec3 vWPos;\n' + shader.vertexShader.replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+         vec3 _wp0 = (modelMatrix * vec4(transformed, 1.0)).xyz;
+         transformed.y += 0.045 * sin(uTime * 1.6 + _wp0.x * 0.7) * cos(uTime * 1.2 + _wp0.z * 0.7);
+         vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
+    }
+    const preamble = 'uniform float uDaylight;\n' + (water ? 'uniform float uTime;\nvarying vec3 vWPos;\n' : '');
+    shader.fragmentShader = preamble + shader.fragmentShader.replace(
       '#include <color_fragment>',
       `#ifdef USE_COLOR
          float _light = max(vColor.r, vColor.g * uDaylight) * vColor.b;
-         diffuseColor.rgb *= max(_light, 0.05);
+         ${water
+           ? 'float _sh = 0.90 + 0.10 * sin(uTime * 2.0 + vWPos.x * 1.3 + vWPos.z * 1.3);\n         diffuseColor.rgb *= max(_light, 0.05) * _sh;'
+           : 'diffuseColor.rgb *= max(_light, 0.05);'}
        #endif`);
   };
-  mat.customProgramCacheKey = () => 'voxel-light-' + (mat.transparent ? 'w' : 'o');
+  mat.customProgramCacheKey = () => 'voxel-light-' + (water ? 'w' : 'o');
   return mat;
 }
 const materials = {
   opaque: patchLight(new THREE.MeshBasicMaterial({ map: tex, vertexColors: true, alphaTest: 0.5 })),
-  water: patchLight(new THREE.MeshBasicMaterial({ map: tex, vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide })),
+  water: patchLight(new THREE.MeshBasicMaterial({ map: tex, vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }), true),
 };
 
 // ---- Core systems ----------------------------------------------------------
@@ -337,6 +354,7 @@ function frame(now) {
   requestAnimationFrame(frame);
   let dt = (now - last) / 1000; last = now;
   if (dt > 0.25) dt = 0.25;
+  waterTime.value = now / 1000; // animate water every frame, even while paused
 
   const active = started && controls.locked && !UI.isOverlayOpen();
   if (active) controls.applyLook(player);

@@ -110,17 +110,14 @@ export class Player {
       if (input.jump) this.vel.y += speed * 3.2 * dt + 0.08; // swim up / stay afloat
       if (this.vel.y < -3) this.vel.y = -3;
     } else {
-      // Ground/air movement with acceleration + friction.
-      const control = this.onGround ? 1 : 0.28; // less air control
-      const accel = speed * 10 * control;
-      this.vel.x += wx * accel * dt;
-      this.vel.z += wz * accel * dt;
-      const friction = this.onGround ? 0.72 : 0.92;
-      this.vel.x *= friction; this.vel.z *= friction;
-      // Clamp horizontal speed.
-      const hs = Math.hypot(this.vel.x, this.vel.z);
-      const max = speed;
-      if (hs > max) { this.vel.x = this.vel.x / hs * max; this.vel.z = this.vel.z / hs * max; }
+      // Ground/air movement: exponentially approach the target velocity.
+      // Framerate-independent (uses dt in the rate) so steady-state horizontal
+      // speed equals `speed`, and ground has tighter control than air.
+      const tvx = wx * speed, tvz = wz * speed;
+      const rate = this.onGround ? 14 : 3.5;   // approach rate, per second
+      const k = 1 - Math.exp(-rate * dt);
+      this.vel.x += (tvx - this.vel.x) * k;
+      this.vel.z += (tvz - this.vel.z) * k;
 
       this.vel.y -= GRAVITY * dt;
       if (input.jump && this.onGround) { this.vel.y = JUMP_VEL; this.onGround = false; }

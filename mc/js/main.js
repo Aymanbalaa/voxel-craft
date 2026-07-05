@@ -43,7 +43,7 @@ scene.fog = new THREE.Fog(0x8fbaff, FOG_FAR * 0.5, FOG_FAR);
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 1000);
 
 // ---- Texture atlas + light-injecting materials -----------------------------
-const atlas = buildAtlas();
+const atlas = await buildAtlas();
 const tex = new THREE.CanvasTexture(atlas.canvas);
 tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
 tex.generateMipmaps = false; tex.flipY = false; tex.colorSpace = THREE.SRGBColorSpace;

@@ -138,14 +138,34 @@ That makes them runnable and unit-testable in plain Node.
 - **Textures** and **audio** are generated at runtime on canvases and the Web Audio API — the repo
   ships no binary assets.
 
+### Texture packs (optional PNG overrides)
+
+The 256×256 atlas is composited at boot from a **tile registry** (`js/texture-registry.js`) and
+crisp, seamless procedural **generators** (`js/texture-generators.js`). Every tile also checks for an
+optional override PNG — drop a **16×16 PNG** named after the tile into `assets/textures/` and it
+replaces that tile; anything missing falls back to the generator. An empty folder is fully valid (a
+fresh clone stays 100% procedural). Examples:
+
+```
+mc/assets/textures/grass_top.png
+mc/assets/textures/stone.png
+mc/assets/textures/oak_log.png
+```
+
+Tile names match the registry entries in `js/texture-registry.js` (`NAMES`).
+
 ### Tests
 
 The pure modules ship with Node test suites:
 
 ```bash
 cd mc
-for t in noise worldgen mesh recipes inventory; do node test/test-$t.mjs; done
+for t in noise worldgen mesh recipes inventory atlas; do node test/test-$t.mjs; done
 ```
+
+`test/test-atlas.mjs` covers registry completeness/order, generator determinism, texture **seam
+safety** (wrap-aware noise), and the PNG-override selection logic — all without a browser, via a
+lightweight canvas mock (`test/mock-canvas.mjs`).
 
 <div align="center">
 <sub>Built from scratch with vanilla JavaScript and Three.js — no engine, no build step.</sub>

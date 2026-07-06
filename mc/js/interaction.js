@@ -190,7 +190,11 @@ export class Interaction {
     if (id === B.AIR) return;
     // find existing in hotbar or place in selected slot
     for (let i = 0; i < 9; i++) if (this.inv.slots[i]?.id === id) { this.inv.select(i); return; }
-    this.inv.set(this.inv.selected, { id, count: this.player.mode === 'creative' ? 64 : 1 });
+    // Only fabricate the block into the hand in creative mode. In survival,
+    // pick-block may only re-select an existing matching hotbar slot (handled
+    // above); it must never create items out of nothing.
+    if (this.player.mode !== 'creative') return;
+    this.inv.set(this.inv.selected, { id, count: 64 });
   }
 }
 

@@ -5,6 +5,19 @@
 const DB_NAME = 'voxelcraft';
 const DB_VERSION = 1;
 
+// Exact byte length of a stored chunk block buffer: CHUNK * CHUNK * HEIGHT = 16*16*128.
+// Buffers restored from IndexedDB are used directly as authoritative block data
+// (getBlock indexing, worker meshing), so a tampered record with a wrong/oversized
+// buffer could cause OOM or out-of-bounds reads. Restored buffers must match exactly.
+const CHUNK_BYTES = 16 * 16 * 128;
+// Upper bound on how many edited-chunk keys we will restore in one load. Guards
+// against an attacker-sized editedKeys array spawning unbounded concurrent reads.
+// Each restored chunk is CHUNK_BYTES (32 KB) held live in the savedEdits Map for
+// the session, so the cap also bounds peak memory: 8192 * 32 KB ~= 256 MB. This is
+// far above any realistic edited-world size while denying a tampered save the
+// ~3.28 GB allocation the old 100000 cap allowed (which OOM-crashes the tab).
+const MAX_EDITED_KEYS = 8192;
+
 function openDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -59,13 +72,35 @@ export const Save = {
     });
     if (!meta) return null;
     const edits = new Map();
-    if (meta.editedKeys && meta.editedKeys.length) {
-      const store = db.transaction('chunks').objectStore('chunks');
-      await Promise.all(meta.editedKeys.map(k => new Promise((res) => {
-        const r = store.get(`${seed}:${k}`);
-        r.onsuccess = () => { if (r.result) edits.set(k, new Uint8Array(r.result)); res(); };
-        r.onerror = () => res();
-      })));
+    if (Array.isArray(meta.editedKeys) && meta.editedKeys.length) {
+      const keys = meta.editedKeys.slice(0, MAX_EDITED_KEYS);
+      // Read in bounded batches instead of one unbounded Promise.all over all
+      // MAX_EDITED_KEYS keys. Each record's full ArrayBuffer is materialized by
+      // r.result before its byteLength can be checked, so a tampered DB whose
+      // records hold oversized buffers could otherwise deserialize thousands of
+      // them into memory at once — blowing past the ~256 MB bound the cap is meant
+      // to enforce. Capping concurrency to READ_BATCH keeps at most a small, fixed
+      // number of (possibly oversized) buffers resident, and each is dropped
+      // immediately after the size check so bad records can't accumulate.
+      const READ_BATCH = 32;
+      for (let i = 0; i < keys.length; i += READ_BATCH) {
+        const batch = keys.slice(i, i + READ_BATCH);
+        const store = db.transaction('chunks').objectStore('chunks');
+        await Promise.all(batch.map(k => new Promise((res) => {
+          const r = store.get(`${seed}:${k}`);
+          r.onsuccess = () => {
+            const buf = r.result;
+            // Only overlay buffers that are exactly the expected chunk size; drop
+            // missing, short, oversized, or non-buffer records so corrupt/tampered
+            // saves can't OOM or feed out-of-bounds block data into the game.
+            if (buf && typeof buf.byteLength === 'number' && buf.byteLength === CHUNK_BYTES) {
+              edits.set(k, new Uint8Array(buf));
+            }
+            res();
+          };
+          r.onerror = () => res();
+        })));
+      }
     }
     return { meta, edits };
   },

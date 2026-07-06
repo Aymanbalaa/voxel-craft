@@ -13,6 +13,11 @@ import { B } from './blocks.js';
 const AREA = CHUNK * CHUNK;
 const key = (cx, cz) => cx + ',' + cz;
 const cidx = (lx, y, lz) => lx + lz * CHUNK + y * AREA;
+// A well-formed chunk key is exactly two signed integers "cx,cz" (as produced by
+// key()). Tampered saves can smuggle non-string or malformed keys into savedEdits;
+// validate before they reach editedChunks / collectEdits' k.split() (which would
+// otherwise throw on a non-string and silently disable all further saves).
+const isChunkKey = (k) => typeof k === 'string' && /^-?\d+,-?\d+$/.test(k);
 
 // Per-chunk record.
 // state: 'pending-gen' | 'blocks' | 'meshing' | 'ready'
@@ -46,8 +51,14 @@ export class World {
 
     this.worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
     this.worker.onmessage = (e) => this._onWorker(e.data);
+    // A worker exception (or an undeserializable message) never posts a matching
+    // result, so its pendingGen/pendingMesh key and inFlight slot would leak and
+    // eventually deadlock streaming. Recover the in-flight bookkeeping on error.
+    this.worker.onerror = (e) => this._onWorkerError(e);
+    this.worker.onmessageerror = (e) => this._onWorkerError(e);
     this.worker.postMessage({ t: 'init', seed, faceTiles, TILES });
     this.ready = false;
+    this._readyFired = false;
     this._initResolve = null;
     this.whenReady = new Promise(r => (this._initResolve = r));
 
@@ -115,6 +126,10 @@ export class World {
 
   // ---- Streaming ----------------------------------------------------------
   update(px, pz) {
+    // Guard against a non-finite player position (e.g. NaN/Infinity propagated
+    // from a tampered save): floor()ing it yields garbage chunk coords that
+    // would dispatch degenerate gen/mesh jobs to the worker.
+    if (!Number.isFinite(px) || !Number.isFinite(pz)) return;
     const pcx = Math.floor(px / CHUNK), pcz = Math.floor(pz / CHUNK);
     if (pcx !== this.lastCX || pcz !== this.lastCZ) {
       this.lastCX = pcx; this.lastCZ = pcz;
@@ -205,15 +220,17 @@ export class World {
   }
 
   _onWorker(msg) {
-    if (msg.t === 'ready') { this.ready = true; this._initResolve?.(); return; }
+    if (msg.t === 'ready') { this.ready = true; this._readyFired = true; this._initResolve?.(); return; }
     if (msg.t === 'gen') {
       const k = key(msg.cx, msg.cz);
       this.pendingGen.delete(k);
-      this.inFlightGen--;
+      this.inFlightGen = Math.max(0, this.inFlightGen - 1);
       const c = this.chunks.get(k);
       if (!c) return; // unloaded while generating
       // Overlay any saved player edits for this chunk on top of fresh generation.
-      if (this.savedEdits.has(k)) { c.blocks = this.savedEdits.get(k); this.editedChunks.add(k); }
+      // The chunk map now owns the authoritative buffer; drop the savedEdits copy
+      // so it isn't retained in parallel (it is re-added on unload in _unloadFar).
+      if (this.savedEdits.has(k)) { c.blocks = this.savedEdits.get(k); this.savedEdits.delete(k); this.editedChunks.add(k); }
       else c.blocks = new Uint8Array(msg.blocks);
       c.state = 'blocks';
       // This chunk and any neighbor may now have a complete neighborhood → queue mesh.
@@ -230,15 +247,50 @@ export class World {
     if (msg.t === 'mesh') {
       const k = key(msg.cx, msg.cz);
       this.pendingMesh.delete(k);
-      this.inFlightMesh--;
+      this.inFlightMesh = Math.max(0, this.inFlightMesh - 1);
       const c = this.chunks.get(k);
       if (!c) return;
       // Discard stale results (an edit happened after this mesh was dispatched).
-      if (msg.rev !== c.rev) { if (c.blocks) { c.dirty = true; this.meshQueue.unshift(k); } }
+      // Requeue for a fresh remesh and return BEFORE installing the pre-edit
+      // geometry or regressing meshRev to the stale revision.
+      if (msg.rev !== c.rev) {
+        if (c.blocks) { c.dirty = true; this.meshQueue.unshift(k); }
+        return;
+      }
       this._applyMesh(c, msg);
       c.meshRev = msg.rev;
       c.state = 'ready';
       if (this.onChunkReady) this.onChunkReady(c.cx, c.cz);
+    }
+  }
+
+  // Recover after a worker error: outstanding jobs will never post a result, so
+  // reset the in-flight counters and pending sets (otherwise leaked slots stall
+  // the pipeline once MAX_INFLIGHT is reached), then rebuild the work queues from
+  // current chunk state so streaming resumes on the next _pump.
+  _onWorkerError(e) {
+    try { console.error('[world] worker error:', (e && (e.message || e.type)) || e); } catch (_) {}
+    // If the worker died before ever posting 'ready' (module parse/import failure,
+    // a CSP worker-src/script-src block, or an exception in the 'init' handler),
+    // whenReady would otherwise stay pending forever and boot()'s `await
+    // world.whenReady` would spin the load screen indefinitely. Settle the init
+    // promise once so boot can proceed instead of hanging. Promise resolution is
+    // idempotent, so this never affects the normal success path.
+    if (!this._readyFired) { this._readyFired = true; this._initResolve?.(); }
+    this.inFlightGen = 0;
+    this.inFlightMesh = 0;
+    this.pendingGen.clear();
+    this.pendingMesh.clear();
+    this.genQueue.length = 0;
+    this.meshQueue.length = 0;
+    for (const [k, c] of this.chunks) {
+      if (!c) continue;
+      if (c.state === 'pending-gen') {
+        this.genQueue.push([c.cx, c.cz]);
+      } else if (c.blocks && (c.dirty || c.meshRev < 0 || c.meshRev !== c.rev)) {
+        c.dirty = true;
+        this.meshQueue.push(k);
+      }
     }
   }
 
@@ -281,7 +333,15 @@ export class World {
   // revisited this session, so register their keys as edited (collectEdits only
   // walks editedChunks — otherwise unvisited saved chunks silently drop on save).
   setSavedEdits(map) {
-    this.savedEdits = map || new Map();
+    // Drop any tampered entry whose key isn't a well-formed "cx,cz" string: such a
+    // key could never match key()'s output during overlay, but if copied into
+    // editedChunks it would later crash collectEdits' k.split() and permanently
+    // disable saving. Keep only valid entries so downstream code sees clean keys.
+    const clean = new Map();
+    if (map) {
+      for (const [k, v] of map) if (isChunkKey(k)) clean.set(k, v);
+    }
+    this.savedEdits = clean;
     for (const k of this.savedEdits.keys()) this.editedChunks.add(k);
   }
 
@@ -289,6 +349,10 @@ export class World {
   collectEdits() {
     const out = [];
     for (const k of this.editedChunks) {
+      // Defense in depth: never call split() on a malformed key. A non-string key
+      // would throw here (aborting the whole save), and a string like "abc" would
+      // yield NaN,NaN and re-persist junk. Skip anything not "cx,cz".
+      if (!isChunkKey(k)) continue;
       const c = this.chunks.get(k);
       let blocks = c && c.blocks ? c.blocks : this.savedEdits.get(k);
       if (!blocks) continue;

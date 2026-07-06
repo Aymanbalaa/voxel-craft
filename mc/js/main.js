@@ -2,7 +2,7 @@
 // inventory, drops, UI, and sound into a playable loop.
 
 import * as THREE from '../vendor/three.module.js';
-import { CHUNK, HEIGHT } from './config.js';
+import { CHUNK, HEIGHT, MAX_HEALTH, MAX_HUNGER } from './config.js';
 import { B, BLOCKS } from './blocks.js';
 import { I, isBlockItem, itemIcon, itemName, attackDamage, maxStack } from './items.js';
 import { buildAtlas, makeIcon } from './textures.js';
@@ -274,6 +274,15 @@ function nearCraftingTable() {
 
 let showF3 = false;
 
+// Coerce a possibly-tampered saved value to a finite number clamped to [lo,hi];
+// returns `fallback` for NaN/Infinity/non-numeric input. Guards against corrupt
+// or malicious saves poisoning physics/HUD state.
+function clampFinite(v, lo, hi, fallback) {
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return n < lo ? lo : (n > hi ? hi : n);
+}
+
 // ---- Loading gate ----------------------------------------------------------
 let started = false;
 let loadedExisting = false;
@@ -286,13 +295,32 @@ async function boot() {
       loadedExisting = true;
       world.setSavedEdits(saved.edits);
       const m = saved.meta;
-      if (m.time != null) sky.setTime(m.time);
+      // Validate untrusted saved day/night time: NaN/Infinity/non-numeric would
+      // make sky.setTime compute NaN, permanently poisoning lighting/color
+      // uniforms with no recovery this session.
+      if (m.time != null && Number.isFinite(typeof m.time === 'number' ? m.time : Number(m.time)))
+        sky.setTime(typeof m.time === 'number' ? m.time : Number(m.time));
       if (m.player) {
-        player.pos.x = m.player.x; player.pos.y = m.player.y; player.pos.z = m.player.z;
-        player.yaw = m.player.yaw || 0; player.pitch = m.player.pitch || 0;
-        player.setMode(m.player.mode || 'survival'); player.flying = !!m.player.flying;
+        // Validate untrusted saved position/rotation: NaN/Infinity/strings would
+        // poison physics and chunk streaming (NaN chunk coords never resolve the
+        // loading gate); huge finite values would request generation far away.
+        const XZ = 30_000_000;
+        player.pos.x = clampFinite(m.player.x, -XZ, XZ, 8.5);
+        player.pos.y = clampFinite(m.player.y, -64, HEIGHT + 256, HEIGHT);
+        player.pos.z = clampFinite(m.player.z, -XZ, XZ, 8.5);
+        player.yaw = clampFinite(m.player.yaw, -1e6, 1e6, 0);
+        player.pitch = clampFinite(m.player.pitch, -Math.PI / 2, Math.PI / 2, 0);
+        player.setMode(m.player.mode === 'creative' ? 'creative' : 'survival');
+        player.flying = !!m.player.flying;
       }
-      if (m.survival) Object.assign(survival, m.survival);
+      if (m.survival) {
+        // Read only known fields with validation; never Object.assign untrusted
+        // data (would copy exhaustion/_starve/etc — e.g. exhaustion=Infinity hangs
+        // the tab in Survival.update's `while (exhaustion >= 4)` loop).
+        survival.health = clampFinite(m.survival.health, 0, MAX_HEALTH, MAX_HEALTH);
+        survival.hunger = clampFinite(m.survival.hunger, 0, MAX_HUNGER, MAX_HUNGER);
+        survival.saturation = clampFinite(m.survival.saturation, 0, MAX_HUNGER, 5);
+      }
       if (m.inventory) inventory.load(m.inventory);
       if (m.furnaces) furnaces.load(m.furnaces);
     }

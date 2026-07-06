@@ -1,0 +1,10 @@
+# Static-host HTTP response headers (Netlify / Cloudflare Pages `_headers` format).
+# These deliver protections that a <meta http-equiv="Content-Security-Policy">
+# tag cannot enforce (frame-ancestors, X-Frame-Options are header-only).
+# For hosts that do not read `_headers` (nginx, Apache, Vercel, S3/CloudFront),
+# replicate the same headers in that host's config.
+/*
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer

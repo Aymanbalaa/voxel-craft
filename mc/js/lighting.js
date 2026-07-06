@@ -47,9 +47,23 @@ export function computeLight(slab) {
   const sky = new Uint8Array(SVol);
   const block = new Uint8Array(SVol);
 
-  // A simple index queue with a head pointer (fast BFS, no shift()).
-  const q = new Int32Array(SVol);   // reused for both passes
-  let qh = 0, qt = 0;
+  // A fixed-capacity ring-buffer index queue with an "in-queue" dedup flag.
+  // Each cell can be live in the queue at most once, so occupancy never exceeds
+  // SVol and the ring index can never overflow (which previously drove an OOB
+  // read -> NaN coord decode -> infinite loop, and silently dropped block-light
+  // propagations). BFS relaxation still reaches the same max-light fixpoint, so
+  // the resulting sky/block arrays are unchanged for all valid input.
+  const CAP = SVol;                 // max distinct live cells
+  const q = new Int32Array(CAP);    // ring buffer, reused for both passes
+  const inQ = new Uint8Array(SVol); // 1 => cell currently queued
+  let qh = 0, qt = 0, qn = 0;       // head, tail, live count
+  const qpush = (idx) => {
+    if (inQ[idx]) return;           // already queued -> keep occupancy bounded
+    inQ[idx] = 1;
+    q[qt] = idx;
+    qt = (qt + 1 === CAP) ? 0 : qt + 1;
+    qn++;
+  };
 
   // --- Skylight: seed top-down columns, then BFS spread ---------------------
   for (let z = 0; z < SLAB; z++) {
@@ -61,14 +75,17 @@ export function computeLight(slab) {
         const i = col + y * SArea;
         if (IS_OPAQUE[slab[i]]) break;
         sky[i] = 15;
-        q[qt++] = i;
+        qpush(i);
         y--;
       }
     }
   }
   // BFS horizontal/into-shadow spread (-1 per step).
-  while (qh < qt) {
-    const i = q[qh++];
+  while (qn > 0) {
+    const i = q[qh];
+    qh = (qh + 1 === CAP) ? 0 : qh + 1;
+    qn--;
+    inQ[i] = 0;
     const lvl = sky[i];
     if (lvl <= 1) continue;
     const nl = lvl - 1;
@@ -78,22 +95,26 @@ export function computeLight(slab) {
     const z = (r / SLAB) | 0;
     const x = r - z * SLAB;
     // 6 neighbors
-    if (x > 0)        trySky(slab, sky, q, i - 1, nl) && (q[qt++] = i - 1);
-    if (x < SLAB - 1) trySky(slab, sky, q, i + 1, nl) && (q[qt++] = i + 1);
-    if (z > 0)        trySky(slab, sky, q, i - SLAB, nl) && (q[qt++] = i - SLAB);
-    if (z < SLAB - 1) trySky(slab, sky, q, i + SLAB, nl) && (q[qt++] = i + SLAB);
-    if (y > 0)        trySky(slab, sky, q, i - SArea, nl) && (q[qt++] = i - SArea);
-    if (y < SLAB_H-1) trySky(slab, sky, q, i + SArea, nl) && (q[qt++] = i + SArea);
+    if (x > 0)        trySky(slab, sky, q, i - 1, nl) && qpush(i - 1);
+    if (x < SLAB - 1) trySky(slab, sky, q, i + 1, nl) && qpush(i + 1);
+    if (z > 0)        trySky(slab, sky, q, i - SLAB, nl) && qpush(i - SLAB);
+    if (z < SLAB - 1) trySky(slab, sky, q, i + SLAB, nl) && qpush(i + SLAB);
+    if (y > 0)        trySky(slab, sky, q, i - SArea, nl) && qpush(i - SArea);
+    if (y < SLAB_H-1) trySky(slab, sky, q, i + SArea, nl) && qpush(i + SArea);
   }
 
   // --- Blocklight: seed emitters, then BFS spread ---------------------------
-  qh = 0; qt = 0;
+  // Reuse the ring; the skylight pass fully drained it, so inQ is all-zero here.
+  qh = 0; qt = 0; qn = 0;
   for (let i = 0; i < SVol; i++) {
     const e = LIGHT_EMIT[slab[i]];
-    if (e > 0) { block[i] = e; q[qt++] = i; }
+    if (e > 0) { block[i] = e; qpush(i); }
   }
-  while (qh < qt) {
-    const i = q[qh++];
+  while (qn > 0) {
+    const i = q[qh];
+    qh = (qh + 1 === CAP) ? 0 : qh + 1;
+    qn--;
+    inQ[i] = 0;
     const lvl = block[i];
     if (lvl <= 1) continue;
     const nl = lvl - 1;
@@ -101,12 +122,12 @@ export function computeLight(slab) {
     const r = i - y * SArea;
     const z = (r / SLAB) | 0;
     const x = r - z * SLAB;
-    if (x > 0)        tryBlk(slab, block, i - 1, nl) && (q[qt++] = i - 1);
-    if (x < SLAB - 1) tryBlk(slab, block, i + 1, nl) && (q[qt++] = i + 1);
-    if (z > 0)        tryBlk(slab, block, i - SLAB, nl) && (q[qt++] = i - SLAB);
-    if (z < SLAB - 1) tryBlk(slab, block, i + SLAB, nl) && (q[qt++] = i + SLAB);
-    if (y > 0)        tryBlk(slab, block, i - SArea, nl) && (q[qt++] = i - SArea);
-    if (y < SLAB_H-1) tryBlk(slab, block, i + SArea, nl) && (q[qt++] = i + SArea);
+    if (x > 0)        tryBlk(slab, block, i - 1, nl) && qpush(i - 1);
+    if (x < SLAB - 1) tryBlk(slab, block, i + 1, nl) && qpush(i + 1);
+    if (z > 0)        tryBlk(slab, block, i - SLAB, nl) && qpush(i - SLAB);
+    if (z < SLAB - 1) tryBlk(slab, block, i + SLAB, nl) && qpush(i + SLAB);
+    if (y > 0)        tryBlk(slab, block, i - SArea, nl) && qpush(i - SArea);
+    if (y < SLAB_H-1) tryBlk(slab, block, i + SArea, nl) && qpush(i + SArea);
   }
 
   return { sky, block };

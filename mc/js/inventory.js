@@ -2,7 +2,7 @@
 // Implements Minecraft-style click semantics so ui.js can drive it directly.
 // A stack is { id, count } or null. PURE except for maxStack lookup.
 
-import { maxStack } from './items.js';
+import { maxStack, itemDef } from './items.js';
 
 export class Inventory {
   constructor() {
@@ -164,9 +164,23 @@ export class Inventory {
   toJSON() { return { slots: this.slots, selected: this.selected }; }
   load(data) {
     if (!data) return;
-    this.slots = (data.slots || []).slice(0, 36);
+    const src = Array.isArray(data.slots) ? data.slots.slice(0, 36) : [];
+    this.slots = src.map(s => Inventory._sanitizeSlot(s));
     while (this.slots.length < 36) this.slots.push(null);
-    this.selected = data.selected || 0;
+    this.selected = Number.isInteger(data.selected) ? ((data.selected % 9) + 9) % 9 : 0;
     this._changed();
+  }
+
+  // Coerce an untrusted restored slot to null or a well-formed {id,count} stack.
+  // Guards against tampered saves feeding NaN/negative/oversized counts or
+  // non-numeric ids into stack arithmetic and the DOM.
+  static _sanitizeSlot(s) {
+    if (!s || typeof s !== 'object') return null;
+    const id = s.id;
+    if (!Number.isInteger(id) || id <= 0 || !itemDef(id)) return null;
+    const max = maxStack(id);
+    const count = Math.floor(s.count);
+    if (!Number.isFinite(count) || count < 1) return null;
+    return { id, count: Math.min(count, max) };
   }
 }

@@ -170,9 +170,9 @@ export class Mobs {
       this._ai(m, dt, player);
       this._physics(m, dt);
       this._animate(m, dt);
-      // Despawn far mobs.
+      // Despawn far mobs, or any mob that tunneled below the world into the void.
       const dist = Math.hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z);
-      if (dist > 80) { this._despawn(m); continue; }
+      if (dist > 80 || m.pos.y < -8) { this._despawn(m); continue; }
       // Zombies burn in daylight.
       if (m.type === 'zombie' && this._daylight > 0.85) {
         m.burnTime = (m.burnTime || 0) + dt;
@@ -223,6 +223,9 @@ export class Mobs {
     m.vel.x += (wx * spd - m.vel.x) * Math.min(1, dt * 8);
     m.vel.z += (wz * spd - m.vel.z) * Math.min(1, dt * 8);
     m.vel.y -= GRAV * dt;
+    // Cap fall speed so a single clamped-dt step cannot skip past the 1-block
+    // bedrock floor and tunnel a mob into an endless (never-despawned) free-fall.
+    if (m.vel.y < -60) m.vel.y = -60;
 
     const w = this.world;
     m.onGround = false;

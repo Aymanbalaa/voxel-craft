@@ -2,9 +2,30 @@
 // in the background (whether or not their UI is open) using recipes' smelt/fuel data.
 
 import { smeltResult, fuelTicks } from './recipes.js';
-import { maxStack } from './items.js';
+import { maxStack, itemDef } from './items.js';
 
 const COOK_TICKS = 200;   // one item = 200 ticks (10s at 20 tps)
+const MAX_FUEL_TICKS = 1600;   // longest single-fuel burn (coal/charcoal in recipes.js FUEL table)
+const MAX_FURNACES = 8192;   // cap on restored furnace entries (mirrors save.js MAX_EDITED_KEYS = 8192)
+// A valid furnace key is exactly "x,y,z" of signed integers, matching _key().
+const _KEY_RE = /^-?\d+,-?\d+,-?\d+$/;
+
+// Sanitize a restored slot from persistence: accept only null or a well-formed
+// { id, count } stack with a registered integer id and an integer count in 1..maxStack.
+// Malformed/tampered stacks are dropped (null) so the smelting tick can't be poisoned.
+function _saneSlot(v) {
+  if (!v || typeof v !== 'object') return null;
+  const id = v.id;
+  if (!Number.isInteger(id) || !itemDef(id)) return null;
+  let count = v.count;
+  if (!Number.isInteger(count) || count < 1) return null;
+  const max = maxStack(id);
+  if (count > max) count = max;
+  return { id, count };
+}
+
+// Coerce a restored numeric counter to a finite, non-negative number.
+function _saneNum(v) { return Number.isFinite(v) && v > 0 ? v : 0; }
 
 export class Furnaces {
   constructor() { this.map = new Map(); }   // "x,y,z" -> furnace state
@@ -80,11 +101,29 @@ export class Furnaces {
   }
   load(o) {
     this.map.clear();
-    if (!o) return;
+    if (!o || typeof o !== 'object') return;
+    let n = 0;
     for (const k in o) {
+      // Drop malformed keys (must be "x,y,z" integer coords) and cap total entries
+      // so a tampered save can't produce an unbounded, per-frame-ticked Map.
+      if (!_KEY_RE.test(k)) continue;
+      if (n >= MAX_FURNACES) break;
+      n++;
       const d = o[k];
-      this.map.set(k, { slots: d.slots || { input: null, fuel: null, output: null },
-        progress: 0, burn: 0, _burnLeft: d._burnLeft || 0, _burnMax: d._burnMax || 0, _cook: d._cook || 0 });
+      const rs = (d && d.slots && typeof d.slots === 'object') ? d.slots : null;
+      const slots = {
+        input:  _saneSlot(rs && rs.input),
+        fuel:   _saneSlot(rs && rs.fuel),
+        output: _saneSlot(rs && rs.output),
+      };
+      // Clamp restored counters into one-fuel / one-smelt bounds so a tampered save
+      // can't grant infinite/free burn (_burnLeft >> _burnMax) or instant cook progress.
+      const burnMax = Math.min(_saneNum(d && d._burnMax), MAX_FUEL_TICKS);
+      const burnLeft = Math.min(_saneNum(d && d._burnLeft), burnMax);
+      const cook = Math.min(_saneNum(d && d._cook), COOK_TICKS);
+      this.map.set(k, { slots,
+        progress: 0, burn: 0,
+        _burnLeft: burnLeft, _burnMax: burnMax, _cook: cook });
     }
   }
 }

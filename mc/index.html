@@ -3,6 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <!-- NOTE: frame-ancestors below is documentation only; per the CSP spec it is
+       ignored inside a <meta> policy. Real clickjacking protection is delivered as
+       HTTP response headers via the sibling `_headers` file (frame-ancestors /
+       X-Frame-Options: DENY). Configure the same headers on any host that does not
+       read `_headers`. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-ancestors 'none'" />
+  <meta name="referrer" content="no-referrer" />
   <title>VoxelCraft</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>

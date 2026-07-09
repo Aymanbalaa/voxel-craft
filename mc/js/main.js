@@ -384,6 +384,12 @@ const STEP = 1 / 60;
 let acc = 0, last = performance.now(), fps = 0, fpsT = 0, fpsN = 0;
 let air = 10, drownTimer = 0, bobPhase = 0;
 const EMPTY = { forward:0,back:0,left:0,right:0,jump:0,sneak:0,sprint:0 };
+// Previous physics-step position, for render interpolation. Physics runs at a
+// fixed 60Hz; the display often doesn't (144Hz, or 60Hz with accumulator
+// drift), so snapping the camera to player.pos each frame makes motion judder.
+// Rendering at prev + (pos - prev) * (acc/STEP) restores smooth motion.
+const prevPos = { x: 0, y: 0, z: 0 };
+let prevValid = false;
 
 function frame(now) {
   requestAnimationFrame(frame);
@@ -395,20 +401,41 @@ function frame(now) {
   if (active) controls.applyLook(player);
 
   if (started) {
-    acc += dt;
+    // Clamp banked sim-time to what one frame can drain (5 steps). Without
+    // this, a single >83ms stall (GC, upload burst, tab switch) leaves debt in
+    // acc that replays as several frames of 5x fast-forward motion — a lurch
+    // that's worse than the hitch itself. Dropping the excess costs a few tens
+    // of ms of sim time during a stall, which is imperceptible.
+    acc = Math.min(acc + dt, STEP * 5);
     let steps = 0;
     while (acc >= STEP && steps < 5) {
+      prevPos.x = player.pos.x; prevPos.y = player.pos.y; prevPos.z = player.pos.z;
+      prevValid = true;
       const evt = player.update(STEP, active ? controls.input : EMPTY);
       if (evt.enteredWater) sound.play?.('splash', { volume: 0.5 });
       if (evt.landedDamage > 0) { hurt(evt.landedDamage); }
       acc -= STEP; steps++;
+    }
+    // Interpolate the render position between the last two physics states.
+    // Snap instead when there is no valid prev or after a teleport (respawn /
+    // dropToGround moves pos several metres in one step — lerping across that
+    // would streak the camera through the world for a frame).
+    let rx = player.pos.x, ry = player.pos.y, rz = player.pos.z;
+    if (prevValid) {
+      const jump2 = (player.pos.x - prevPos.x) ** 2 + (player.pos.y - prevPos.y) ** 2 + (player.pos.z - prevPos.z) ** 2;
+      if (jump2 < 4) {
+        const alpha = Math.min(acc / STEP, 1);
+        rx = prevPos.x + (player.pos.x - prevPos.x) * alpha;
+        ry = prevPos.y + (player.pos.y - prevPos.y) * alpha;
+        rz = prevPos.z + (player.pos.z - prevPos.z) * alpha;
+      } else { prevPos.x = player.pos.x; prevPos.y = player.pos.y; prevPos.z = player.pos.z; }
     }
     // View bob while walking on the ground.
     const hv = Math.hypot(player.vel.x, player.vel.z);
     if (player.onGround && hv > 0.5) bobPhase += dt * 10;
     const bob = player.onGround ? Math.sin(bobPhase) * Math.min(hv, 6) * 0.012 : 0;
     const bobX = Math.cos(bobPhase * 0.5) * Math.min(hv, 6) * 0.01;
-    camera.position.set(player.pos.x, player.eyeY() + bob, player.pos.z);
+    camera.position.set(rx, ry + (player.eyeY() - player.pos.y) + bob, rz);
     camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
     camera.translateX(bobX);
     sky.update(dt);

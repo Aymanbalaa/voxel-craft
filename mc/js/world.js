@@ -149,13 +149,19 @@ export class World {
         want.push([pcx + dx, pcz + dz]);
       }
     }
+    // Rebuild the gen queue in ring (nearest-first) order relative to the
+    // CURRENT position. Appending only new chunks would leave older, now-far
+    // entries ahead of the travel-direction frontier (stale FIFO), so terrain
+    // ahead of the player would pop in after terrain beside/behind. Rebuilding
+    // also drops queued entries for chunks that went out of range or unloaded.
+    const nq = [];
     for (const [cx, cz] of want) {
       const k = key(cx, cz);
-      if (!this.chunks.has(k)) {
-        this.chunks.set(k, new Chunk(cx, cz));
-        this.genQueue.push([cx, cz]);
-      }
+      let c = this.chunks.get(k);
+      if (!c) { c = new Chunk(cx, cz); this.chunks.set(k, c); }
+      if (c.state === 'pending-gen' && !this.pendingGen.has(k)) nq.push([cx, cz]);
     }
+    this.genQueue = nq;
   }
 
   _unloadFar(pcx, pcz) {

@@ -11,6 +11,7 @@ import { CHUNK, HEIGHT, RENDER_DIST } from './config.js';
 import { B } from './blocks.js';
 
 const AREA = CHUNK * CHUNK;
+const CHUNK_BYTES = CHUNK * CHUNK * HEIGHT;
 const key = (cx, cz) => cx + ',' + cz;
 const cidx = (lx, y, lz) => lx + lz * CHUNK + y * AREA;
 // A well-formed chunk key is exactly two signed integers "cx,cz" (as produced by
@@ -31,6 +32,7 @@ class Chunk {
     this.opaqueMesh = null;
     this.waterMesh = null;
     this.dirty = false;
+    this.pendingApply = null; // finished worker mesh result awaiting budgeted apply
   }
 }
 
@@ -65,6 +67,12 @@ export class World {
     // Budgets per update tick.
     this.GEN_BUDGET = 6;
     this.MESH_BUDGET = 4;
+    this.applyQueue = [];         // chunk keys with a finished mesh awaiting apply
+    // Reusable 32KB neighborhood buffers. Each mesh dispatch copies 9 chunk
+    // buffers to the worker; the worker transfers them back after slab-copy so
+    // we can refill them instead of allocating ~288KB of fresh garbage per job
+    // (GC pressure exactly during streaming bursts). Bounded: ≤64 ≈ 2MB.
+    this._bufPool = [];
     this.inFlightGen = 0;
     this.inFlightMesh = 0;
     this.MAX_INFLIGHT_GEN = 12;
@@ -137,6 +145,7 @@ export class World {
       this._unloadFar(pcx, pcz);
     }
     this._pump();
+    this._drainApplies();
   }
 
   _reprioritize(pcx, pcz) {
@@ -215,7 +224,11 @@ export class World {
     const chunks = new Array(9).fill(null);
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
       const nc = this.chunks.get(key(c.cx + dx, c.cz + dz));
-      chunks[(dz + 1) * 3 + (dx + 1)] = nc && nc.blocks ? nc.blocks.buffer.slice(0) : null;
+      if (nc && nc.blocks) {
+        const buf = this._bufPool.pop() || new ArrayBuffer(CHUNK_BYTES);
+        new Uint8Array(buf).set(nc.blocks); // copy: authoritative buffer must stay intact
+        chunks[(dz + 1) * 3 + (dx + 1)] = buf;
+      }
     }
     c.dirty = false;
     c.state = 'meshing';
@@ -252,6 +265,11 @@ export class World {
     }
     if (msg.t === 'mesh') {
       const k = key(msg.cx, msg.cz);
+      // Recycle the neighborhood buffers the worker transferred back — before
+      // any early return, so stale/unloaded results still refill the pool.
+      if (Array.isArray(msg.srcBufs)) for (const b of msg.srcBufs) {
+        if (b instanceof ArrayBuffer && b.byteLength === CHUNK_BYTES && this._bufPool.length < 64) this._bufPool.push(b);
+      }
       this.pendingMesh.delete(k);
       this.inFlightMesh = Math.max(0, this.inFlightMesh - 1);
       const c = this.chunks.get(k);
@@ -263,10 +281,37 @@ export class World {
         if (c.blocks) { c.dirty = true; this.meshQueue.unshift(k); }
         return;
       }
-      this._applyMesh(c, msg);
-      c.meshRev = msg.rev;
-      c.state = 'ready';
-      if (this.onChunkReady) this.onChunkReady(c.cx, c.cz);
+      // Don't build/scene-add the geometry here: worker messages aren't tied to
+      // vsync, so several finished meshes can land between two frames and their
+      // buffers would all GPU-upload inside one renderer.render() (worst case on
+      // tab refocus, when every in-flight job applies at once). Park the result
+      // and let update() drain a budgeted number per frame instead. Assigning
+      // pendingApply supersedes an older un-applied result for the same chunk.
+      if (!c.pendingApply) this.applyQueue.push(k);
+      c.pendingApply = msg;
+    }
+  }
+
+  // Apply up to MESH_BUDGET finished mesh results per tick, so GPU buffer
+  // uploads are spread across frames the same way mesh dispatch already is.
+  _drainApplies() {
+    let n = 0;
+    while (this.applyQueue.length && n < this.MESH_BUDGET) {
+      const k = this.applyQueue.shift();
+      const c = this.chunks.get(k);
+      if (!c || !c.pendingApply) continue; // unloaded while parked
+      const msg = c.pendingApply;
+      c.pendingApply = null;
+      if (msg.rev === c.rev) {
+        this._applyMesh(c, msg);
+        c.meshRev = msg.rev;
+        c.state = 'ready';
+        if (this.onChunkReady) this.onChunkReady(c.cx, c.cz);
+        n++;
+      } else if (c.blocks && !c.dirty && !this.pendingMesh.has(k)) {
+        // Edited while parked and not yet requeued by _markDirty: remesh.
+        c.dirty = true; this.meshQueue.unshift(k);
+      }
     }
   }
 

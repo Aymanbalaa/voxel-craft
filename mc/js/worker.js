@@ -40,11 +40,16 @@ self.onmessage = (e) => {
       const tintAt = (lx, lz, tile) => (tile === GRASS_TOP || tile === TALL_GRASS)
         ? biomeTint(biomeAt(SEED, ox + lx, oz + lz)) : WHITE;
       const m = meshChunk(slab, light, faceTiles, tintAt);
+      // buildSlab copied the input chunks into the slab, so the incoming
+      // buffers are no longer needed here — transfer them back for the main
+      // thread's buffer pool instead of leaving them as worker-side garbage.
+      const srcBufs = msg.chunks.filter(Boolean);
       const transfer = [
         m.opaque.position.buffer, m.opaque.uv.buffer, m.opaque.color.buffer, m.opaque.tint.buffer, m.opaque.index.buffer,
         m.water.position.buffer, m.water.uv.buffer, m.water.color.buffer, m.water.tint.buffer, m.water.index.buffer,
+        ...srcBufs,
       ];
-      self.postMessage({ t: 'mesh', cx: msg.cx, cz: msg.cz, rev: msg.rev, opaque: m.opaque, water: m.water }, transfer);
+      self.postMessage({ t: 'mesh', cx: msg.cx, cz: msg.cz, rev: msg.rev, opaque: m.opaque, water: m.water, srcBufs }, transfer);
       break;
     }
   }

@@ -542,7 +542,16 @@ function handleFootsteps(dt) {
   }
 }
 
+// Skip the ~40 DOM writes in UI.updateHUD on frames where nothing it shows
+// changed (the common case). The F3 overlay changes every frame, so it always
+// updates while visible.
+let hudSig = '';
 function updateHUD() {
+  const sig = showF3 ? null : `${survival.health}|${survival.hunger}|${Math.ceil(air)}|${player.mode}`;
+  if (sig !== null) {
+    if (sig === hudSig) return;
+    hudSig = sig;
+  } else hudSig = '';
   UI.updateHUD({
     health: survival.health, hunger: survival.hunger,
     air: Math.ceil(air),

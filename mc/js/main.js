@@ -144,6 +144,15 @@ function renderItemIcon(id) {
   iconCache.set(id, c);
   return c;
 }
+// Pre-warm the icon cache now, while the loading screen is still up. Block
+// icons are expensive to build (three getImageData readbacks + hundreds of
+// fillRects each); building all ~60 lazily inside the first creative-menu /
+// inventory open stalls that frame for tens of milliseconds.
+for (const id of Object.keys(BLOCKS).map(Number)) {
+  if (id === B.AIR) continue;
+  try { renderItemIcon(id); } catch {}
+}
+for (const id of Object.values(I)) { try { renderItemIcon(id); } catch {} }
 
 // ---- UI wiring -------------------------------------------------------------
 UI.initUI({

@@ -357,13 +357,18 @@ async function boot() {
 
 // ---- Persistence -----------------------------------------------------------
 function gatherState() {
+  // Delta save: buffers only for chunks changed since the last successful
+  // save; editedKeys still lists every edited chunk for the metadata record.
+  const delta = world.collectEditsDelta();
   return {
     seed: SEED, time: sky.getTime(),
     player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch, mode: player.mode, flying: player.flying },
     survival: { health: survival.health, hunger: survival.hunger, saturation: survival.saturation },
     inventory: inventory.toJSON(),
     furnaces: furnaces.toJSON(),
-    edits: world.collectEdits(),
+    edits: delta.edits,
+    editedKeys: delta.editedKeys,
+    _pendingSave: delta.pending,
     savedAt: Math.floor(Date.now() / 1000),
   };
 }
@@ -371,8 +376,14 @@ let saving = false;
 async function saveGame(showToast = true) {
   if (saving) return;
   saving = true;
-  try { await Save.saveWorld(gatherState()); if (showToast) UI.showToast('World saved'); }
-  catch (e) { console.warn('save failed', e); if (showToast) UI.showToast('Save failed'); }
+  let state = null;
+  try { state = gatherState(); await Save.saveWorld(state); if (showToast) UI.showToast('World saved'); }
+  catch (e) {
+    // The write didn't commit: put the not-yet-persisted chunk keys back so
+    // the next save retries them instead of silently dropping the edits.
+    if (state) world.restorePendingSave(state._pendingSave);
+    console.warn('save failed', e); if (showToast) UI.showToast('Save failed');
+  }
   finally { saving = false; }
 }
 let autosaveTimer = null;

@@ -48,11 +48,17 @@ export const Save = {
     });
   },
 
-  // state: { seed, time, player, survival, inventory, furnaces, edits:[{cx,cz,blocks:Uint8Array}] }
+  // state: { seed, time, player, survival, inventory, furnaces,
+  //          edits:[{cx,cz,blocks:Uint8Array}],   // chunks to (re)write this save
+  //          editedKeys?: string[] }              // ALL edited keys for the meta record
+  // When editedKeys is present (delta save), `edits` may hold only the chunks
+  // changed since the last save — unchanged chunks keep their existing records.
   async saveWorld(state) {
     const db = await this.init();
     const { t, done } = tx(db, ['meta', 'chunks'], 'readwrite');
-    const editedKeys = state.edits.map(e => `${e.cx},${e.cz}`);
+    const editedKeys = Array.isArray(state.editedKeys)
+      ? state.editedKeys
+      : state.edits.map(e => `${e.cx},${e.cz}`);
     t.objectStore('meta').put({
       seed: state.seed, time: state.time, player: state.player,
       survival: state.survival, inventory: state.inventory, furnaces: state.furnaces,

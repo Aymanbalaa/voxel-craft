@@ -43,6 +43,7 @@ export class World {
     this.materials = materials;   // { opaque, water }
     this.chunks = new Map();
     this.editedChunks = new Set();  // keys of chunks the player changed (for saving)
+    this.pendingSave = new Set();   // subset of editedChunks changed since the last successful save
     this.savedEdits = new Map();    // key -> full Uint8Array to overlay on generation
     this.genQueue = [];           // [cx,cz] wanting generation
     this.meshQueue = [];          // chunk keys wanting (re)mesh
@@ -107,6 +108,7 @@ export class World {
     if (c.blocks[i] === id) return;
     c.blocks[i] = id;
     this.editedChunks.add(key(cx, cz));   // track for persistence
+    this.pendingSave.add(key(cx, cz));    // needs re-persisting on the next save
     this._markDirty(c); // bumps rev + enqueues remesh
     // Remesh neighbors if the edit is on a border (lighting/faces cross chunks).
     if (lx === 0) this._markDirtyKey(cx - 1, cz);
@@ -396,7 +398,38 @@ export class World {
     for (const k of this.savedEdits.keys()) this.editedChunks.add(k);
   }
 
-  // Collect edited chunks as {cx,cz,blocks} copies for saving.
+  // Incremental save collection: full key list for the metadata record, but
+  // block-buffer copies ONLY for chunks changed since the last successful save
+  // (unchanged chunks' buffers are already persisted in IndexedDB). Without
+  // this, every 30s autosave re-copied and re-wrote every chunk ever edited —
+  // a main-thread hitch that grows forever with build size.
+  //
+  // Moves pendingSave aside and returns it as `pending`: edits made while the
+  // async write is in flight land in the fresh set (and get saved next time);
+  // call restorePendingSave(pending) if the write fails so nothing is lost.
+  collectEditsDelta() {
+    const pending = this.pendingSave;
+    this.pendingSave = new Set();
+    const edits = [];
+    const editedKeys = [];
+    for (const k of this.editedChunks) {
+      if (!isChunkKey(k)) continue;
+      editedKeys.push(k);
+      if (!pending.has(k)) continue;
+      const c = this.chunks.get(k);
+      const blocks = c && c.blocks ? c.blocks : this.savedEdits.get(k);
+      if (!blocks) continue;
+      const [cx, cz] = k.split(',').map(Number);
+      edits.push({ cx, cz, blocks: blocks.slice(0) });
+    }
+    return { edits, editedKeys, pending };
+  }
+
+  restorePendingSave(pending) {
+    if (pending) for (const k of pending) this.pendingSave.add(k);
+  }
+
+  // Collect ALL edited chunks as {cx,cz,blocks} copies (full snapshot).
   collectEdits() {
     const out = [];
     for (const k of this.editedChunks) {

@@ -1,0 +1,55 @@
+name: Deploy VoxelCraft to GitHub Pages
+
+# Static, no-build site living in mc/. We assemble a clean publish dir
+# (dropping dev-only node_modules/test/screenshots) and deploy it to Pages.
+# Note: GitHub Pages does NOT honor mc/_headers, so the header-based
+# clickjacking/nosniff/referrer protections are not applied here. The
+# in-page <meta> CSP still ships. See mc/_headers for the intended headers
+# if this is ever moved to Netlify / Cloudflare Pages.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mc/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; newer pushes supersede in-flight ones.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble static site from mc/
+        run: |
+          mkdir -p _site
+          rsync -a --delete \
+            --exclude 'node_modules' \
+            --exclude 'test' \
+            --exclude 'screenshots' \
+            --exclude 'package.json' \
+            --exclude 'package-lock.json' \
+            mc/ _site/
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

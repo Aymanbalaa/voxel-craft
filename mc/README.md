@@ -13,6 +13,8 @@ No game engine. No build step. No dependencies to install to play. Just ES modul
 ![Web Workers](https://img.shields.io/badge/terrain-Web_Worker_streamed-blue)
 ![License: ISC](https://img.shields.io/badge/license-ISC-lightgrey)
 
+### ▶ [**Play it now → aymanbalaa.github.io/voxel-craft**](https://aymanbalaa.github.io/voxel-craft/)
+
 ![Voxelheim — coastal terrain vista](screenshots/hero.png)
 
 </div>
@@ -105,6 +107,21 @@ python -m http.server 8177
 ```
 
 Click the screen to lock the mouse and start playing.
+
+### Play online / Deploy
+
+The live build is hosted **free on GitHub Pages** at
+**[aymanbalaa.github.io/voxel-craft](https://aymanbalaa.github.io/voxel-craft/)**.
+
+Deployment is automated by [`.github/workflows/deploy-pages.yml`](../.github/workflows/deploy-pages.yml):
+every push touching `mc/**` assembles a clean publish dir (dropping `node_modules`, `test`,
+`screenshots`, and the package files) and deploys it. No build step — it's a static site. The app is
+subpath-safe (all relative paths, origin-based CSP), so it serves correctly under `/voxel-craft/`.
+
+> **Note on security headers:** GitHub Pages does not honor `mc/_headers`, so the header-based
+> protections there (`X-Frame-Options`, `frame-ancestors`, `nosniff`, referrer policy) are **not**
+> applied on this host — the in-page `<meta>` CSP still ships. To restore those headers with zero code
+> changes, host on **Netlify** or **Cloudflare Pages**, which read `_headers` directly.
 
 ### Controls
 
